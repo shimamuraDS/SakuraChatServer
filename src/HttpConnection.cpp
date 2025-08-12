@@ -6,7 +6,7 @@
 #include "LogicSystem.h"
 #include <iostream>
 
-HttpConnection::HttpConnection(tcp::socket socket): _socket(std::move(socket)) {
+HttpConnection::HttpConnection(net::io_context& ioc): _socket(ioc) {
 }
 
 // 启动HTTP连接，开始异步读取请求

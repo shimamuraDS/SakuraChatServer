@@ -53,7 +53,11 @@ public:
         return _config_map[section];
     }
 
-    ConfigMgr();
+    static ConfigMgr& Inst() {
+        static ConfigMgr cfg_mgr;
+        return cfg_mgr;
+    }
+
     // 拷贝构造函数
     ConfigMgr(const ConfigMgr& src) {
         _config_map = src._config_map;
@@ -68,6 +72,7 @@ public:
         return *this;
     }
 private:
+    ConfigMgr();
     std::map<std::string, SectionInfo> _config_map;
 };
 

@@ -4,6 +4,7 @@
 
 #ifndef SINGLETON_H
 #define SINGLETON_H
+#include "const.h"
 
 template <typename T>
 class Singleton {
