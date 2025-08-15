@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-
+add_definitions(-D_WIN32_WINNT=0x0601)
 cmake_policy(SET CMP0167 NEW)
 cmake_policy(SET CMP0074 NEW)
 
@@ -10,6 +10,9 @@ project(server)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include_directories("D:/environment/Redis/deps/hiredis")
+link_directories("D:/environment/Redis/lib")
 
 # Boost
 set(CMAKE_PREFIX_PATH "D:/environment/boost_1_88_0/boost_1_88_0/lib/cmake")
@@ -245,6 +248,8 @@ add_executable(server
         include/message.grpc.pb.h
         src/AsioIOServicePool.cpp
         include/AsioIOServicePool.h
+        src/RedisMgr.cpp
+        include/RedisMgr.h
 )
 
 target_link_libraries(server PRIVATE
@@ -253,4 +258,6 @@ target_link_libraries(server PRIVATE
         Boost::filesystem
         ${JSONCPP_LIB_DIR}/jsoncpp.lib
         ${ABSL_LIBS}
+        hiredis
+        Win32_Interop
 )
