@@ -22,6 +22,9 @@ find_package(Boost 1.88 REQUIRED COMPONENTS thread system filesystem)
 set(JSONCPP_INCLUDE_DIR "D:/environment/jsoncpp-1.9.6/include")
 set(JSONCPP_LIB_DIR "D:/environment/jsoncpp-1.9.6/build/lib/Debug")
 
+# MySQL Connector/C++
+set(MYSQLCPP_ROOT "D:/environment/mysql-connector/mysql-connector-c++-9.4.0-winx64")
+
 # 添加 gRPC 源码路径
 set(GRPC_PROTOBUF_INCLUDE_DIR "D:/environment/grpc/third_party/protobuf/src")
 set(GRPC_INCLUDE_DIR "D:/environment/grpc/include")
@@ -225,8 +228,9 @@ include_directories(
         ${ABSL_INCLUDE_DIR}  # abseil头文件（核心，包含所有absl/...子目录）
         ${GRPC_ADDRESS_SORTING_INCLUDE_DIR}
         ${GRPC_RE2_INCLUDE_DIR}
+        ${MYSQLCPP_ROOT}/include
 )
-
+link_directories(${MYSQLCPP_ROOT}/lib64/debug/vs14)
 add_executable(server
         GateServer.cpp
         src/CServer.cpp
@@ -250,6 +254,8 @@ add_executable(server
         include/AsioIOServicePool.h
         src/RedisMgr.cpp
         include/RedisMgr.h
+        src/MysqlDao.cpp
+        include/MysqlDao.h
 )
 
 target_link_libraries(server PRIVATE
@@ -260,4 +266,12 @@ target_link_libraries(server PRIVATE
         ${ABSL_LIBS}
         hiredis
         Win32_Interop
+        mysqlcppconn
+)
+
+add_custom_command(TARGET server POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "D:/environment/mysql-connector/mysql-connector-c++-9.4.0-winx64/lib64/debug/mysqlcppconn-10-vs14.dll"
+        "D:/environment/mysql-connector/mysql-connector-c++-9.4.0-winx64/lib64/debug/mysqlcppconnx-2-vs14.dll"
+        $<TARGET_FILE_DIR:server>
 )
