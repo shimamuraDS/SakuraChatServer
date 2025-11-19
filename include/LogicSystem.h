@@ -23,5 +23,4 @@ private:
     std::map<std::string, HttpHandler> _get_handlers;
 };
 
-
 #endif //LOGICSYSTEM_H

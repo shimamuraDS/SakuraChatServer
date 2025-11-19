@@ -256,6 +256,8 @@ add_executable(server
         include/RedisMgr.h
         src/MysqlDao.cpp
         include/MysqlDao.h
+        src/MysqlMgr.cpp
+        include/MysqlMgr.h
 )
 
 target_link_libraries(server PRIVATE

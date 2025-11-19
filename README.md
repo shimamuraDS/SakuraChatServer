@@ -1,5 +1,3 @@
-基于你的代码，我为这个 HTTP 服务器项目编写了一个 README 文档：
-
 ```markdown
 # HTTP 服务器项目
 
