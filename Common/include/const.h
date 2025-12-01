@@ -21,6 +21,8 @@
 #include <queue>
 #include <condition_variable>
 #include <cassert>
+#include "message.grpc.pb.h"
+#include "message.pb.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;

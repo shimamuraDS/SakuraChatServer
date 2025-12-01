@@ -252,5 +252,6 @@ bool MysqlDao::CheckPwd(const std::string& email, const std::string& pwd, UserIn
         std::cerr << "SQLException: " << e.what();
         std::cerr << "(MySQL error code: " << e.getErrorCode();
         std::cerr << ", SQLState: " << e.getSQLState() << ")" << std::endl;
+        return false;
     }
 }

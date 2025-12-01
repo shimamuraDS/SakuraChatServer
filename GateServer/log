@@ -1,0 +1,15 @@
+cmake .. -G "Visual Studio 17 2022" -A x64 -DBUILD_SHARED_LIBS=OFF
+cmake --build . --config Debug
+cmake --build . --config Release
+
+grpc
+https://blog.csdn.net/2303_77997820/article/details/137933741
+"D:\worktool\Clion\CLion 2025.1\bin\cmake\win\x64\bin\cmake.exe" ../.. -G "Visual Studio 17 2022" -A x64 -DCMAKE_INSTALL_PREFIX=../../install -DgRPC_INSTALL=ON -DgRPC_BUILD_TESTS=OFF -DgRPC_BUILD_CSHARP_EXT=OFF -DBUILD_SHARED_LIBS=OFF -DCARES_STATIC=ON -DCARES_INSTALL=ON -DCARES_BUILD_TOOLS=ON -DABSL_PROPAGATE_CXX_STD=ON -DABSL_ENABLE_INSTALL=ON
+"D:\worktool\Clion\CLion 2025.1\bin\cmake\win\x64\bin\cmake.exe" --build . --config Release
+"D:\worktool\Clion\CLion 2025.1\bin\cmake\win\x64\bin\cmake.exe" --install . --config Release
+
+"D:\worktool\Clion\CLion 2025.1\bin\cmake\win\x64\bin\cmake.exe" .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_INSTALL_PREFIX=D:/environment/grpc-1.74.0/install -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreadedDLL" -Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_ABSL_PROVIDER=package -Dabsl_DIR="D:/environment/grpc-1.74.0/install/lib/cmake/absl"
+
+proto
+PS E:\SakuraChatProject\GateServer> D:\environment\grpc-1.74.0\cmake\build\third_party\protobuf\Debug\protoc.exe -I="." --grpc_out="." --plugin=protoc-gen-grpc="D:\environment\grpc-1.74.0\cmake\build\Debug\grpc_cpp_plugin.exe" "message.proto"
+PS E:\SakuraChatProject\GateServer> D:\environment\grpc-1.74.0\cmake\build\third_party\protobuf\Debug\protoc.exe --cpp_out=. "message.proto"

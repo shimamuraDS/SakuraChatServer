@@ -8,6 +8,7 @@
 #include "RedisMgr.h"
 #include "MysqlMgr.h"
 #include "const.h"
+#include "StatusGrpcClient.h"
 
 void LogicSystem::RegGet(std::string url, HttpHandler handler) {
     _get_handlers.insert(make_pair(url, handler));

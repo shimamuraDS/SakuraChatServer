@@ -1,0 +1,16 @@
+{
+  "email": {
+    "user": "sakurachat@foxmail.com",
+    "pass": "cbjtzpoyydybcagc"
+  },
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "password": 123456
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "password": "redis0124"
+  }
+}
