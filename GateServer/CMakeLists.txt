@@ -231,16 +231,12 @@ add_executable(GateServer
         include/LogicSystem.h
         src/VerifyGrpcClient.cpp
         include/VerifyGrpcClient.h
-        src/AsioIOServicePool.cpp
-        include/AsioIOServicePool.h
         src/RedisMgr.cpp
         include/RedisMgr.h
         src/MysqlDao.cpp
         include/MysqlDao.h
         src/MysqlMgr.cpp
         include/MysqlMgr.h
-        src/StatusGrpcClient.cpp
-        include/StatusGrpcClient.h
 )
 
 target_include_directories(GateServer PRIVATE

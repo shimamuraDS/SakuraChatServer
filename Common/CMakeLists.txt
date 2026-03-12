@@ -225,6 +225,8 @@ set(ABSL_LIBS
 # ---- 静态库 Common ----
 add_library(Common STATIC
         src/ConfigMgr.cpp
+        src/AsioIOServicePool.cpp
+        src/StatusGrpcClient.cpp
         include/message.grpc.pb.h
         include/message.pb.h
         ${GENERATED_PROTO_FILES}

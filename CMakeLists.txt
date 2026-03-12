@@ -5,7 +5,7 @@ project(ChatServers)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 打印日志（可选，调试时很好用）
+# 打印日志
 message(STATUS "Protobuf include dirs: ${Protobuf_INCLUDE_DIRS}")
 message(STATUS "gRPC include dirs: ${gRPC_INCLUDE_DIRS}")
 
@@ -13,4 +13,5 @@ message(STATUS "gRPC include dirs: ${gRPC_INCLUDE_DIRS}")
 add_subdirectory(Common)
 add_subdirectory(StatusServer)
 add_subdirectory(GateServer)
+add_subdirectory(ChatServer)
 configure_file(${CMAKE_SOURCE_DIR}/config.ini ${CMAKE_BINARY_DIR}/config.ini COPYONLY)
