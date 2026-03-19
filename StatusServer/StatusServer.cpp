@@ -1,7 +1,8 @@
+#include "StatusServiceImpl.h"
 #include <grpcpp/server_builder.h>
 
 #include "ConfigMgr.h"
-#include "StatusServiceImpl.h"
+
 //
 // Created by adachi on 25-11-25.
 //

@@ -240,8 +240,8 @@ add_executable(GateServer
 )
 
 target_include_directories(GateServer PRIVATE
-        include
-        ${CMAKE_CURRENT_LIST_DIR}/../Common/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Common/include
         ${JSONCPP_INCLUDE_DIR}
         ${Boost_INCLUDE_DIRS}
         ${GRPC_PROTOBUF_INCLUDE_DIR}  # protobuf头文件

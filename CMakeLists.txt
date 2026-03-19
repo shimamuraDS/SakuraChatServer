@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ChatServers)
+project(Server)
 
 # 指定 C++ 标准
 set(CMAKE_CXX_STANDARD 17)

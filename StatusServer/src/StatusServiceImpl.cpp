@@ -50,6 +50,25 @@ Status StatusServiceImpl::GetChatServer(ServerContext* context, const GetChatSer
     return Status::OK;
 }
 
+Status StatusServiceImpl::Login(ServerContext* context, const LoginReq* request, LoginRsp* reply) {
+    auto uid = request->uid();
+    auto token = request->token();
+    std::lock_guard<std::mutex> guard(_token_mtx);
+    auto iter = _tokens.find(uid);
+    if (iter == _tokens.end()) {
+        reply->set_error(ErrorCodes::UidInvalid);
+        return Status::OK;
+    }
+    if (iter->second != token) {
+        reply->set_error(ErrorCodes::TokenInvalid);
+        return Status::OK;
+    }
+    reply->set_error(ErrorCodes::Success);
+    reply->set_uid(uid);
+    reply->set_token(token);
+    return Status::OK;
+}
+
 ChatServer StatusServiceImpl::getChatServer() {
     std::lock_guard<std::mutex> guard(_server_mtx);
     auto minServer = _servers.begin()->second;

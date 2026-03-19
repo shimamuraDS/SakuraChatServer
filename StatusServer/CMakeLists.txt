@@ -21,13 +21,13 @@ link_directories(${MYSQLCPP_ROOT}/lib64/debug/vs14)
 
 add_executable(StatusServer
         StatusServer.cpp
-        src/StatusServiceImpl.cpp
         include/StatusServiceImpl.h
+        src/StatusServiceImpl.cpp
 )
 
 target_include_directories(StatusServer PRIVATE
-        include
-        ${CMAKE_CURRENT_LIST_DIR}/../Common/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Common/include
 )
 
 target_link_libraries(StatusServer PRIVATE
