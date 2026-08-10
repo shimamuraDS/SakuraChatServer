@@ -37,6 +37,14 @@ struct SectionInfo {
 
         return _section_datas[key];
     }
+
+    std::string GetValue(const std::string& key) {
+        if (_section_datas.find(key) == _section_datas.end()) {
+            return "";
+        }
+
+        return _section_datas[key];
+    }
 };
 
 class ConfigMgr {
@@ -60,7 +68,7 @@ public:
 
     // 拷贝构造函数
     ConfigMgr(const ConfigMgr& src) {
-        _config_map = src._config_map;
+        this->_config_map = src._config_map;
     }
     // 赋值运算符重载
     ConfigMgr& operator = (const ConfigMgr& src) {
@@ -68,9 +76,10 @@ public:
             return *this;
         }
 
-        _config_map = src._config_map;
-        return *this;
+        this->_config_map = src._config_map;
     }
+
+    std::string GetValue(const std::string& section, const std::string& key);
 private:
     ConfigMgr();
     std::map<std::string, SectionInfo> _config_map;

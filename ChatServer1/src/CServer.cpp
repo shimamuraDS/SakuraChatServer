@@ -31,6 +31,8 @@ void CServer::HandleAccept(std::shared_ptr<CSession> new_session, const boost::s
     } else {
         std::cout << "Accept error: " << error.message() << std::endl;
     }
+
+    StartAccept();
 }
 
 void CServer::StartAccept() {

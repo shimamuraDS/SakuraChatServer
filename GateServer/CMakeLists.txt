@@ -231,10 +231,10 @@ add_executable(GateServer
         include/LogicSystem.h
         src/VerifyGrpcClient.cpp
         include/VerifyGrpcClient.h
-        src/RedisMgr.cpp
-        include/RedisMgr.h
-        src/MysqlDao.cpp
-        include/MysqlDao.h
+        ../Common/src/RedisMgr.cpp
+        ../Common/include/RedisMgr.h
+        ../Common/src/MysqlDao.cpp
+        ../Common/include/MysqlDao.h
         src/MysqlMgr.cpp
         include/MysqlMgr.h
 )

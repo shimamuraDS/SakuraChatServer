@@ -27,6 +27,10 @@ std::string& CSession::GetSessionId() {
     return _session_id;
 }
 
+void CSession::SetUserId(int uid) {
+    _user_id = uid;
+}
+
 int CSession::GetUserId() {
     return _user_id;
 }
@@ -122,7 +126,7 @@ void CSession::AsyncReadHead(int total_len) {
             }
 
             _recv_msg_node = std::make_shared<RecvNode>(msg_len, msg_id);
-            AsyncReadHead(msg_len);
+            AsyncReadBody(msg_len);
         } catch (std::exception& e) {
             std::cout << "exception is " << e.what() << std::endl;
         }

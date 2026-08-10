@@ -2,7 +2,7 @@
 // Created by adachi on 25-9-2.
 //
 
-#include "MysqlDao.h"
+#include "../include/MysqlDao.h"
 #include "ConfigMgr.h"
 
 MySqlPool::MySqlPool(const std::string& url, const std::string& user, const std::string& pass,
@@ -61,7 +61,7 @@ void MySqlPool::checkConnection() {
             std::unique_ptr<sql::Statement> stmt(con->_con->createStatement());
             stmt->executeQuery("SELECT 1");
             con->_last_oper_time = timestamp;
-            std::cout << "execute timer alive query, cur is " << timestamp << std::endl;
+            // std::cout << "execute timer alive query, cur is " << timestamp << std::endl;
         } catch (sql::SQLException& e) {
             std::cout << "Error keeping connection alive: " << e.what() << std::endl;
             // 连接失效，重新连接
@@ -226,32 +226,107 @@ bool MysqlDao::CheckPwd(const std::string& email, const std::string& pwd, UserIn
         _pool->returnConnection(std::move(con));
     });
     try {
-        // 准备查询语句
         std::unique_ptr<sql::PreparedStatement> pstmt(con->_con->prepareStatement("SELECT * FROM user WHERE email = ?"));
         pstmt->setString(1, email);
-        // 执行查询
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
         std::string origin_pwd = "";
-        // 遍历结果集
+        bool b_find = false;
+
+        // 【关键修改】：必须在 while 循环内部把 name、uid 等字段一并提取！
         while (res->next()) {
             origin_pwd = res->getString("pwd");
-            // 输出查询到的密码
             std::cout << "Password: " << origin_pwd << std::endl;
+            userInfo.name = res->getString("name");
+            userInfo.email = email;
+            userInfo.uid = res->getInt("uid");
+            userInfo.pwd = origin_pwd;
+            b_find = true;
             break;
         }
 
-        if (pwd != origin_pwd) {
+        if (!b_find || pwd != origin_pwd) {
             return false;
         }
-        userInfo.name = res->getString("name");
-        userInfo.email = email;
-        userInfo.uid = res->getInt("uid");
-        userInfo.pwd = origin_pwd;
+
         return true;
     } catch (sql::SQLException& e) {
         std::cerr << "SQLException: " << e.what();
         std::cerr << "(MySQL error code: " << e.getErrorCode();
         std::cerr << ", SQLState: " << e.getSQLState() << ")" << std::endl;
         return false;
+    }
+}
+
+std::shared_ptr<UserInfo> MysqlDao::GetUser(int uid) {
+    auto con = _pool->getConnection();
+    if (con == nullptr) {
+        return nullptr;
+    }
+
+    Defer defer([this, &con]() {
+        _pool->returnConnection(std::move(con));
+    });
+
+    try {
+        std::unique_ptr<sql::PreparedStatement> pstmt(con->_con->prepareStatement("SELECT * FROM user WHERE uid = ?"));
+        pstmt->setInt(1, uid);
+
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+        std::shared_ptr<UserInfo> user_ptr = nullptr;
+
+        if (res->next()) {
+            user_ptr.reset(new UserInfo);
+            user_ptr->pwd = res->getString("pwd");
+            user_ptr->email = res->getString("email");
+            user_ptr->name = res->getString("name");
+            // user_ptr->nick = res->getString("nick");
+            // user_ptr->desc = res->getString("desc");
+            // user_ptr->gender = res->getInt("gender");
+            // user_ptr->icon = res->getString("icon");
+            user_ptr->uid = uid;
+        }
+        return user_ptr;
+    } catch (sql::SQLException& e) {
+        std::cerr << "SQLException: " << e.what();
+        std::cerr << " (MySQL error code: " << e.getErrorCode();
+        std::cerr << ", SQLState: " << e.getSQLState() << " )" << std::endl;
+        return nullptr;
+    }
+}
+
+std::shared_ptr<UserInfo> MysqlDao::GetUser(std::string name) {
+    auto con = _pool->getConnection();
+    if (con == nullptr) {
+        return nullptr;
+    }
+
+    Defer defer([this, &con]() {
+        _pool->returnConnection(std::move(con));
+    });
+
+    try {
+        std::unique_ptr<sql::PreparedStatement> pstmt(con->_con->prepareStatement("SELECT * FROM user WHERE name = ?"));
+        pstmt->setString(1, name);
+
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+        std::shared_ptr<UserInfo> user_ptr = nullptr;
+
+        if (res->next()) {
+            user_ptr.reset(new UserInfo);
+            user_ptr->pwd = res->getString("pwd");
+            user_ptr->email = res->getString("email");
+            user_ptr->name = res->getString("name");
+            // user_ptr->nick = res->getString("nick");
+            // user_ptr->desc = res->getString("desc");
+            // user_ptr->gender = res->getInt("gender");
+            // user_ptr->uid = res->getInt("uid");
+            // user_ptr->icon = res->getString("icon");
+        }
+        return user_ptr;
+    } catch (sql::SQLException& e) {
+        std::cerr << "SQLException: " << e.what();
+        std::cerr << " (MySQL error code: " << e.getErrorCode();
+        std::cerr << ", SQLState: " << e.getSQLState() << " )" << std::endl;
+        return nullptr;
     }
 }

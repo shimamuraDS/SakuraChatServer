@@ -71,5 +71,10 @@ enum MSG_IDS {
 };
 
 #define CODEPREFIX "code_"
+constexpr std::string_view USERIPPREFIX = "_uip";
+constexpr std::string_view USERTOKENPREFIX = "_utoken";
+constexpr std::string_view IPCOUNTPREFIX = "_ipcount";
+constexpr std::string_view USER_BASE_INFO = "_ubaseinfo";
+constexpr std::string_view LOGIN_COUNT = "_logincount";
 
 #endif //CONST_H

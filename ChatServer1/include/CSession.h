@@ -17,6 +17,7 @@ public:
     ~CSession();
     tcp::socket& GetSocket();
     std::string& GetSessionId();
+    void SetUserId(int uid);
     int GetUserId();
     void Start();
     void Close();

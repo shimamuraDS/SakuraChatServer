@@ -6,7 +6,7 @@ cmake_policy(SET CMP0074 NEW)
 add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
-project(StatusServer)
+project(ChatServer2)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,29 +19,41 @@ set(MYSQLCPP_ROOT "D:/environment/mysql-connector/mysql-connector-c++-9.4.0-winx
 
 link_directories(${MYSQLCPP_ROOT}/lib64/debug/vs14)
 
-add_executable(StatusServer
-        StatusServer.cpp
-        include/StatusServiceImpl.h
-        src/StatusServiceImpl.cpp
-        include/ChatGrpcClient.h
+add_executable(ChatServer2
+        ChatServer.cpp
+        src/CServer.cpp
+        include/CServer.h
+        src/CSession.cpp
+        include/CSession.h
+        src/LogicSystem.cpp
+        include/LogicSystem.h
+        src/MsgNode.cpp
+        include/MsgNode.h
+        src/UserMgr.cpp
+        include/UserMgr.h
+        src/MysqlMgr.cpp
+        include/MysqlMgr.h
         src/ChatGrpcClient.cpp
+        include/ChatGrpcClient.h
+        src/ChatServiceImpl.cpp
+        include/ChatServiceImpl.h
 )
 
-target_include_directories(StatusServer PRIVATE
+target_include_directories(ChatServer2 PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../Common/include
 )
 
-target_link_libraries(StatusServer PRIVATE
+target_link_libraries(ChatServer2 PRIVATE
         Common
         hiredis
         Win32_Interop
         mysqlcppconn
 )
 
-add_custom_command(TARGET StatusServer POST_BUILD
+add_custom_command(TARGET ChatServer2 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "D:/environment/mysql-connector/mysql-connector-c++-9.4.0-winx64/lib64/debug/mysqlcppconn-10-vs14.dll"
         "D:/environment/mysql-connector/mysql-connector-c++-9.4.0-winx64/lib64/debug/mysqlcppconnx-2-vs14.dll"
-        $<TARGET_FILE_DIR:StatusServer>
+        $<TARGET_FILE_DIR:ChatServer2>
 )

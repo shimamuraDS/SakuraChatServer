@@ -9,6 +9,7 @@
 #include <jdbc/mysql_driver.h>
 #include <jdbc/cppconn/statement.h>
 #include <jdbc/cppconn/prepared_statement.h>
+#include "data.h"
 
 class SqlConnection {
 public:
@@ -38,13 +39,6 @@ private:
     std::thread _check_thread;
 };
 
-struct UserInfo {
-    std::string name;
-    std::string pwd;
-    int uid;
-    std::string email;
-};
-
 class MysqlDao {
 public:
     MysqlDao();
@@ -53,6 +47,8 @@ public:
     bool CheckEmail(const std::string& name, const std::string& email);
     bool UpdatePwd(const std::string& name, const std::string& pwd);
     bool CheckPwd(const std::string& email, const std::string& pwd, UserInfo& userinfo);
+    std::shared_ptr<UserInfo> GetUser(int uid);
+    std::shared_ptr<UserInfo> GetUser(std::string name);
 private:
     std::unique_ptr<MySqlPool> _pool;
 };

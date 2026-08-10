@@ -1,0 +1,6 @@
+.idea/
+.vs/
+*.user
+cmake-build-*/
+build/
+node_modules/

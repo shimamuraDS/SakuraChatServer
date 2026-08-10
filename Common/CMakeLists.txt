@@ -227,6 +227,8 @@ add_library(Common STATIC
         src/ConfigMgr.cpp
         src/AsioIOServicePool.cpp
         src/StatusGrpcClient.cpp
+        src/MysqlDao.cpp
+        src/RedisMgr.cpp
         include/message.grpc.pb.h
         include/message.pb.h
         ${GENERATED_PROTO_FILES}

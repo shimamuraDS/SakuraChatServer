@@ -5,7 +5,7 @@
 #include "ConfigMgr.h"
 
 ConfigMgr::ConfigMgr() {
-    boost::filesystem::path current_path = boost::filesystem::current_path().parent_path();
+    boost::filesystem::path current_path = boost::filesystem::current_path();
     boost::filesystem::path config_path = current_path / "config.ini";
     std::cout << "Config path : " << config_path << std::endl;
 
@@ -38,4 +38,12 @@ ConfigMgr::ConfigMgr() {
             std::cout << key_value_pair.first << "=" << key_value_pair.second << std::endl;
         }
     }
+}
+
+std::string ConfigMgr::GetValue(const std::string& section, const std::string& key) {
+    if (_config_map.find(section) == _config_map.end()) {
+        return "";
+    }
+
+    return _config_map[section].GetValue(key);
 }

@@ -7,6 +7,7 @@
 
 #include "Singleton.h"
 #include "data.h"
+#include "MysqlDao.h"
 
 
 class MysqlMgr: public Singleton<MysqlMgr>
@@ -22,6 +23,7 @@ public:
     std::shared_ptr<UserInfo> GetUser(std::string name);
 private:
     MysqlMgr();
+    MysqlDao _dao;
 };
 
 

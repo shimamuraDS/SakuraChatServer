@@ -14,12 +14,10 @@ MysqlMgr::MysqlMgr() {
 
 std::shared_ptr<UserInfo> MysqlMgr::GetUser(int uid)
 {
-    return nullptr;
-    // return _dao.GetUser(uid);
+    return _dao.GetUser(uid);
 }
 
 std::shared_ptr<UserInfo> MysqlMgr::GetUser(std::string name)
 {
-    return nullptr;
-    // return _dao.GetUser(name);
+    return _dao.GetUser(name);
 }
