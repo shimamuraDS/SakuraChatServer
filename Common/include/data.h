@@ -21,10 +21,8 @@ struct UserInfo {
 };
 
 struct ApplyInfo {
-    ApplyInfo(int uid, std::string name, std::string desc,
-        std::string icon, std::string nick, int gender, int status)
-        :_uid(uid),_name(name),_desc(desc),
-        _icon(icon),_nick(nick),_gender(gender),_status(status){}
+    ApplyInfo(int uid, std::string name, std::string desc, std::string icon, std::string nick, int gender, int status)
+        :_uid(uid),_name(name),_desc(desc), _icon(icon),_nick(nick),_gender(gender),_status(status){}
 
     int _uid;
     std::string _name;
@@ -33,6 +31,11 @@ struct ApplyInfo {
     std::string _nick;
     int _gender;
     int _status;
+};
+
+struct FriendApplyResult {
+    int result = -1;
+    std::int64_t applyId = 0;
 };
 
 #endif //DATA_H

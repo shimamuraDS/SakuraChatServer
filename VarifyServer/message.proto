@@ -48,6 +48,10 @@ message AddFriendReq {
 	string name = 2;
 	string desc = 3;
 	int32 touid = 4;
+	int64 apply_id = 5;
+	string icon = 6;
+	string nick = 7;
+	int32 gender = 8;
 }
 
 message AddFriendRsp {
@@ -83,6 +87,8 @@ message SendChatMsgRsp {
 message AuthFriendReq {
 	int32 fromuid = 1;
 	int32 touid = 2;
+	int64 apply_id = 3;
+	bool agree = 4;
 }
 
 message AuthFriendRsp {

@@ -21,6 +21,8 @@ public:
     bool CheckPwd(const std::string& name, const std::string& pwd, UserInfo& userInfo);
     std::shared_ptr<UserInfo> GetUser(int uid);
     std::shared_ptr<UserInfo> GetUser(std::string name);
+    bool FriendExists(int selfUid, int friendUid);
+    FriendApplyResult AddFriendApply(int fromUid, int toUid, const std::string &descs, const std::string &backName);
 private:
     MysqlMgr();
     MysqlDao _dao;

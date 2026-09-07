@@ -34,7 +34,7 @@ class ChatGrpcClient : public Singleton<ChatGrpcClient> {
 
 public:
     ~ChatGrpcClient();
-    message::AddFriendRsp NotifyAddFriend(std::string server_ip, const message::AddFriendReq& req);
+    message::AddFriendRsp NotifyAddFriend(const std::string &serverName, const message::AddFriendReq &request);
     message::AuthFriendRsp NotifyAuthFriend(std::string server_ip, const message::AuthFriendReq& req);
     bool GetBaseInfo(std::string base_key, int uid, std::shared_ptr<UserInfo>& user_info);
     message::TextChatMsgRsp NotifyTextChatMsg(std::string server_ip, const message::TextChatMsgReq& req, const Json::Value& rtvalue);

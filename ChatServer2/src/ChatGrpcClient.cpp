@@ -55,9 +55,30 @@ void ChatConPool::Close() {
 ChatGrpcClient::~ChatGrpcClient() {
 }
 
-message::AddFriendRsp ChatGrpcClient::NotifyAddFriend(std::string server_ip, const message::AddFriendReq& req) {
-    message::AddFriendRsp rsp;
-    return rsp;
+message::AddFriendRsp ChatGrpcClient::NotifyAddFriend(const std::string &serverName, const message::AddFriendReq &request) {
+    message::AddFriendRsp response;
+    auto it = _pools.find(serverName);
+    if (it == _pools.end()) {
+        response.set_error(ErrorCodes::RPCFailed);
+        return response;
+    }
+
+    auto &pool = it->second;
+    auto stub = pool->getConnection();
+    if (!stub) {
+        response.set_error(ErrorCodes::RPCFailed);
+        return response;
+    }
+
+    Defer giveBack([&] { pool->returnConnection(std::move(stub)); });
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now()
+                         + std::chrono::seconds(3));
+
+    const auto status = stub->NotifyAddFriend(&context, request, &response);
+    if (!status.ok())
+        response.set_error(ErrorCodes::RPCFailed);
+    return response;
 }
 
 message::AuthFriendRsp ChatGrpcClient::NotifyAuthFriend(std::string server_ip, const message::AuthFriendReq& req) {

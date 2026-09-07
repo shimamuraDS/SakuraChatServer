@@ -4,6 +4,9 @@
 
 #include "LogicSystem.h"
 
+#include <charconv>
+
+#include "ChatGrpcClient.h"
 #include "ConfigMgr.h"
 #include "RedisMgr.h"
 #include "UserMgr.h"
@@ -15,6 +18,9 @@ LogicSystem::LogicSystem():_b_stop(false) {
 
 void LogicSystem::RegisterCallBacks() {
     _fun_callbacks[MSG_CHAT_LOGIN] = std::bind(&LogicSystem::LoginHandler, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    _fun_callbacks[ID_SEARCH_USER_REQ] = std::bind(&LogicSystem::SearchInfo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    _fun_callbacks[ID_ADD_FRIEND_REQ] = std::bind(&LogicSystem::AddFriendApply, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    _fun_callbacks[ID_AUTH_FRIEND_REQ] = std::bind(&LogicSystem::ResolveFriendApply, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
 }
 
 void LogicSystem::DealMsg() {
@@ -174,4 +180,117 @@ void LogicSystem::PostMsgToQue(std::shared_ptr<LogicNode> msg) {
         unique_lk.unlock();
         _consume.notify_one();
     }
+}
+
+void LogicSystem::SearchInfo(std::shared_ptr<CSession> session,
+                             const short &,
+                             const std::string &msgData)
+{
+    Json::Value request;
+    Json::Value response;
+    Json::Reader reader;
+
+    Defer reply([&] {
+        session->Send(response.toStyledString(), ID_SEARCH_USER_RSP);
+    });
+
+    if (!reader.parse(msgData, request) ||
+        !request.isMember("keyword") ||
+        !request["keyword"].isString()) {
+        response["error"] = ErrorCodes::Error_Json;
+        return;
+        }
+
+    const std::string keyword = request["keyword"].asString();
+    if (keyword.empty() || keyword.size() > 64) {
+        response["error"] = ErrorCodes::Error_Json;
+        return;
+    }
+
+    std::shared_ptr<UserInfo> user;
+
+    const bool digits = !keyword.empty() &&
+        std::all_of(keyword.begin(), keyword.end(),
+                    [](unsigned char c) { return std::isdigit(c); });
+
+    if (digits) {
+        int uid = 0;
+        const auto result = std::from_chars(
+            keyword.data(), keyword.data() + keyword.size(), uid);
+        if (result.ec != std::errc{} ||
+            result.ptr != keyword.data() + keyword.size()) {
+            response["error"] = ErrorCodes::UidInvalid;
+            return;
+            }
+        user = MysqlMgr::GetInstance()->GetUser(uid);
+    } else {
+        user = MysqlMgr::GetInstance()->GetUser(keyword);
+    }
+
+    response["error"] = ErrorCodes::Success;
+    response["found"] = user != nullptr;
+    if (!user)
+        return;
+
+    // 只返回公开资料，绝不能把 pwd、email、token 发给搜索者。
+    response["uid"] = user->uid;
+    response["name"] = user->name;
+    response["nick"] = user->nick;
+    response["desc"] = user->desc;
+    response["gender"] = user->gender;
+    response["icon"] = user->icon;
+    response["is_friend"] =
+        session->GetUserId() != user->uid &&
+        MysqlMgr::GetInstance()->FriendExists(session->GetUserId(), user->uid);
+}
+
+void LogicSystem::NotifyFriendApplication(
+    int fromUid, int toUid, std::int64_t applyId,
+    const std::string &descs)
+{
+    const auto applicant = MysqlMgr::GetInstance()->GetUser(fromUid);
+    if (!applicant)
+        return;
+
+    Json::Value notify;
+    notify["error"] = ErrorCodes::Success;
+    notify["apply_id"] = Json::Int64(applyId);
+    notify["applyuid"] = fromUid;
+    notify["name"] = applicant->name;
+    notify["nick"] = applicant->nick;
+    notify["desc"] = applicant->desc;
+    notify["icon"] = applicant->icon;
+    notify["gender"] = applicant->gender;
+    notify["message"] = descs;
+    const std::string notificationJson = notify.toStyledString();
+
+    const std::string routeKey =
+        std::string(USERIPPREFIX) + std::to_string(toUid);
+    std::string targetServer;
+    if (!RedisMgr::GetInstance()->Get(routeKey, targetServer))
+        return; // 对方离线，等待下次登录同步
+
+    const auto selfServer =
+        ConfigMgr::Inst().GetValue("SelfServer", "Name");
+    if (targetServer == selfServer) {
+        if (auto targetSession =
+                UserMgr::GetInstance()->GetSession(toUid)) {
+            targetSession->Send(
+                notificationJson, ID_NOTIFY_ADD_FRIEND_REQ);
+                }
+        return;
+    }
+
+    message::AddFriendReq rpcRequest;
+    rpcRequest.set_applyuid(fromUid);
+    rpcRequest.set_touid(toUid);
+    rpcRequest.set_apply_id(applyId);
+    rpcRequest.set_name(applicant->name);
+    rpcRequest.set_nick(applicant->nick);
+    rpcRequest.set_desc(descs);
+    rpcRequest.set_icon(applicant->icon);
+    rpcRequest.set_gender(applicant->gender);
+
+    ChatGrpcClient::GetInstance()->NotifyAddFriend(
+        targetServer, rpcRequest);
 }

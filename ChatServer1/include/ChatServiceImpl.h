@@ -6,7 +6,8 @@
 #define CHATSERVICEIMPL_H
 
 #include "const.h"
-#include "../../Common/include/data.h"
+#include "data.h"
+#include "UserMgr.h"
 
 class ChatServiceImpl final : public message::ChatService::Service {
 public:
