@@ -30,3 +30,11 @@ bool MysqlMgr::FriendExists(int selfUid, int friendUid)
 FriendApplyResult MysqlMgr::AddFriendApply(int fromUid, int toUid, const std::string &descs, const std::string &backName) {
     return _dao.AddFriendApply(fromUid, toUid, descs, backName);
 }
+
+std::vector<PendingFriendApplyInfo> MysqlMgr::GetPendingFriendApplies(int toUid, std::int64_t afterId, int limit) {
+    return _dao.GetPendingFriendApplies(toUid, afterId, limit);
+}
+
+ResolveFriendApplyResult MysqlMgr::ResolveFriendApply(std::int64_t applyId, int actorUid, bool agree) {
+    return _dao.ResolveFriendApply(applyId, actorUid, agree);
+}

@@ -23,6 +23,8 @@ public:
     std::shared_ptr<UserInfo> GetUser(std::string name);
     bool FriendExists(int selfUid, int friendUid);
     FriendApplyResult AddFriendApply(int fromUid, int toUid, const std::string &descs, const std::string &backName);
+    std::vector<PendingFriendApplyInfo> GetPendingFriendApplies(int toUid, std::int64_t afterId, int limit);
+    ResolveFriendApplyResult ResolveFriendApply(std::int64_t applyId, int actorUid, bool agree);
 private:
     MysqlMgr();
     MysqlDao _dao;

@@ -125,8 +125,29 @@ void LogicSystem::LoginHandler(std::shared_ptr<CSession> session, const short& m
     // 为用户设置登陆ip server名字
     std::string ipkey = std::string(USERIPPREFIX) + uid_str;
     RedisMgr::GetInstance()->Set(ipkey, server_name);
-
+    // 记录当前用户的连接
     UserMgr::GetInstance()->SetUserSession(uid, session);
+
+    // 查询该用户收到的待处理申请
+    const auto applyList = MysqlMgr::GetInstance()
+        ->GetPendingFriendApplies(uid, 0, 200);
+
+    // 即使没有申请，也返回 JSON 数组 []，而不是 null
+    rtvalue["apply_list"] = Json::Value(Json::arrayValue);
+
+    for (const auto &apply : applyList) {
+        Json::Value item;
+        item["apply_id"] = Json::Int64(apply.applyId);
+        item["uid"] = apply.uid;
+        item["name"] = apply.name;
+        item["nick"] = apply.nick;
+        item["gender"] = apply.gender;
+        item["icon"] = apply.icon;
+        item["message"] = apply.descs;
+        item["status"] = apply.status;
+
+        rtvalue["apply_list"].append(item);
+    }
 }
 
 bool LogicSystem::GetBaseInfo(std::string base_key, int uid, std::shared_ptr<UserInfo>& userinfo) {
@@ -335,5 +356,83 @@ void LogicSystem::NotifyFriendApplication(
     rpcRequest.set_gender(applicant->gender);
 
     ChatGrpcClient::GetInstance()->NotifyAddFriend(
+        targetServer, rpcRequest);
+}
+
+void LogicSystem::ResolveFriendApply(
+    std::shared_ptr<CSession> session,
+    const short &,
+    const std::string &msgData)
+{
+    Json::Value request;
+    Json::Value response;
+    Json::Reader reader;
+
+    Defer reply([&] {
+        session->Send(response.toStyledString(), ID_AUTH_FRIEND_RSP);
+    });
+
+    if (!reader.parse(msgData, request) ||
+        !request["apply_id"].isIntegral() ||
+        !request["agree"].isBool()) {
+        response["error"] = ErrorCodes::Error_Json;
+        response["result"] = -1;
+        response["apply_id"] = Json::Int64(0);
+        response["agree"] = false;
+        return;
+        }
+
+    const auto applyId = request["apply_id"].asInt64();
+    const bool agree = request["agree"].asBool();
+    const int actorUid = session->GetUserId();
+
+    const auto dbResult = MysqlMgr::GetInstance()->ResolveFriendApply(
+        applyId, actorUid, agree);
+
+    response["error"] = ErrorCodes::Success;
+    response["result"] = dbResult.result;
+    response["apply_id"] = Json::Int64(applyId);
+    response["agree"] = agree;
+
+    if (dbResult.result == 0) {
+        NotifyFriendResolution(
+            dbResult.fromUid, actorUid, applyId, agree);
+    }
+}
+
+void LogicSystem::NotifyFriendResolution(
+    int applicantUid, int actorUid,
+    std::int64_t applyId, bool agree)
+{
+    const std::string routeKey =
+        std::string(USERIPPREFIX) + std::to_string(applicantUid);
+    std::string targetServer;
+    if (!RedisMgr::GetInstance()->Get(routeKey, targetServer))
+        return;
+
+    Json::Value notify;
+    notify["error"] = ErrorCodes::Success;
+    notify["result"] = 0;
+    notify["apply_id"] = Json::Int64(applyId);
+    notify["agree"] = agree;
+    notify["peer_uid"] = actorUid;
+
+    const auto selfServer =
+        ConfigMgr::Inst().GetValue("SelfServer", "Name");
+    if (targetServer == selfServer) {
+        if (auto targetSession =
+                UserMgr::GetInstance()->GetSession(applicantUid)) {
+            targetSession->Send(
+                notify.toStyledString(), ID_NOTIFY_AUTH_FRIEND_REQ);
+                }
+        return;
+    }
+
+    message::AuthFriendReq rpcRequest;
+    rpcRequest.set_fromuid(actorUid);
+    rpcRequest.set_touid(applicantUid);
+    rpcRequest.set_apply_id(applyId);
+    rpcRequest.set_agree(agree);
+    ChatGrpcClient::GetInstance()->NotifyAuthFriend(
         targetServer, rpcRequest);
 }

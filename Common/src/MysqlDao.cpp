@@ -411,3 +411,142 @@ FriendApplyResult MysqlDao::AddFriendApply(
     }
     return output;
 }
+
+std::vector<PendingFriendApplyInfo> MysqlDao::GetPendingFriendApplies(int toUid, std::int64_t afterId, int limit) {
+    std::vector<PendingFriendApplyInfo> applications;
+
+    if (toUid <= 0 || afterId < 0)
+        return applications;
+
+    limit = std::clamp(limit, 1, 200);
+
+    auto con = _pool->getConnection();
+    if (!con)
+        return applications;
+
+    Defer giveBack([this, &con]() {
+        _pool->returnConnection(std::move(con));
+    });
+
+    try {
+        std::unique_ptr<sql::PreparedStatement> stmt(
+            con->_con->prepareStatement(
+                "SELECT a.id AS apply_id, a.from_uid, a.status, a.descs, u.name, u.nick, u.gender, u.icon "
+                "FROM friend_apply a JOIN user u ON u.uid = a.from_uid WHERE a.to_uid = ? AND a.status = 0 "
+                "AND a.id > ? ORDER BY a.id ASC LIMIT ?"));
+
+        // 分别对应 SQL 中的三个问号
+        stmt->setInt(1, toUid);
+        stmt->setUInt64(2, static_cast<std::uint64_t>(afterId));
+        stmt->setInt(3, limit);
+
+        std::unique_ptr<sql::ResultSet> res(stmt->executeQuery());
+
+        while (res->next()) {
+            PendingFriendApplyInfo item;
+            item.applyId = res->getInt64("apply_id");
+            item.uid = res->getInt("from_uid");
+            item.status = res->getInt("status");
+            item.descs = res->getString("descs");
+            item.name = res->getString("name");
+            item.nick = res->getString("nick");
+            item.gender = res->getInt("gender");
+            item.icon = res->getString("icon");
+
+            applications.push_back(std::move(item));
+        }
+    } catch (const sql::SQLException &e) {
+        std::cerr << "GetPendingFriendApplies failed, code="
+                  << e.getErrorCode() << std::endl;
+
+        // 出错时不返回只读取了一部分的结果
+        applications.clear();
+    }
+
+    return applications;
+}
+
+ResolveFriendApplyResult MysqlDao::ResolveFriendApply(std::int64_t applyId, int actorUid, bool agree) {
+    ResolveFriendApplyResult output;  // 默认 result = -1
+
+    if (applyId <= 0 || actorUid <= 0)
+        return output;
+
+    auto con = _pool->getConnection();
+    if (!con)
+        return output;
+
+    // 所有查询使用同一个连接，退出时归还连接池
+    Defer giveBack([this, &con]() {
+        _pool->returnConnection(std::move(con));
+    });
+
+    try {
+        int fromUid = 0;
+        int toUid = 0;
+
+        // 1. 查询申请双方，供审核成功后的通知使用
+        {
+            std::unique_ptr<sql::PreparedStatement> stmt(
+                con->_con->prepareStatement(
+                    "SELECT from_uid, to_uid "
+                    "FROM friend_apply "
+                    "WHERE id = ? AND to_uid = ?"));
+
+            stmt->setUInt64(
+                1, static_cast<std::uint64_t>(applyId));
+            stmt->setInt(2, actorUid);
+
+            std::unique_ptr<sql::ResultSet> res(
+                stmt->executeQuery());
+
+            if (!res->next())
+                return output;
+
+            fromUid = res->getInt("from_uid");
+            toUid = res->getInt("to_uid");
+        }
+
+        // 2. 调用存储过程，由数据库执行权限校验和事务更新
+        {
+            std::unique_ptr<sql::PreparedStatement> call(
+                con->_con->prepareStatement(
+                    "CALL resolve_friend_apply("
+                    "?,?,?,@resolve_friend_result)"));
+
+            call->setUInt64(
+                1, static_cast<std::uint64_t>(applyId));
+            call->setInt(2, actorUid);
+            call->setBoolean(3, agree);
+
+            call->execute();
+            call->close();
+        }
+
+        // 3. 读取存储过程的 OUT 参数
+        {
+            std::unique_ptr<sql::Statement> stmt(
+                con->_con->createStatement());
+
+            std::unique_ptr<sql::ResultSet> res(
+                stmt->executeQuery(
+                    "SELECT @resolve_friend_result AS result"));
+
+            if (!res->next() || res->isNull("result"))
+                return output;
+
+            output.result = res->getInt("result");
+        }
+
+        // 4. 只有数据库确认成功，才提供通知所需的双方 UID
+        if (output.result == 0) {
+            output.fromUid = fromUid;
+            output.toUid = toUid;
+        }
+    } catch (const sql::SQLException &e) {
+        std::cerr << "ResolveFriendApply failed, code="
+                  << e.getErrorCode() << std::endl;
+    }
+
+    return output;
+}

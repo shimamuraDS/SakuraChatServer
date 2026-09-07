@@ -31,8 +31,25 @@ grpc::Status ChatServiceImpl::NotifyAddFriend(grpc::ServerContext *, const messa
     return grpc::Status::OK;
 }
 
-grpc::Status ChatServiceImpl::NotifyAuthFriend(grpc::ServerContext* context, const message::AuthFriendReq* request,
-    message::AuthFriendRsp* response) {
+grpc::Status ChatServiceImpl::NotifyAuthFriend(grpc::ServerContext *, const message::AuthFriendReq *request,
+    message::AuthFriendRsp *response) {
+    response->set_error(ErrorCodes::Success);
+    response->set_fromuid(request->fromuid());
+    response->set_touid(request->touid());
+
+    const auto targetSession =
+        UserMgr::GetInstance()->GetSession(request->touid());
+    if (!targetSession)
+        return grpc::Status::OK;
+
+    Json::Value notify;
+    notify["error"] = ErrorCodes::Success;
+    notify["result"] = 0;
+    notify["apply_id"] = Json::Int64(request->apply_id());
+    notify["agree"] = request->agree();
+    notify["peer_uid"] = request->fromuid();
+    targetSession->Send(
+        notify.toStyledString(), ID_NOTIFY_AUTH_FRIEND_REQ);
     return grpc::Status::OK;
 }
 

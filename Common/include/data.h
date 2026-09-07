@@ -38,4 +38,21 @@ struct FriendApplyResult {
     std::int64_t applyId = 0;
 };
 
+struct PendingFriendApplyInfo {
+    std::int64_t applyId = 0;
+    int uid = 0;              // 申请人 UID
+    std::string name;
+    std::string nick;
+    std::string descs;
+    std::string icon;
+    int gender = 0;
+    int status = 0;
+};
+
+struct ResolveFriendApplyResult {
+    int result = -1;
+    int fromUid = 0;
+    int toUid = 0;
+};
+
 #endif //DATA_H
