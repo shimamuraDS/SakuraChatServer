@@ -265,6 +265,52 @@ void LogicSystem::SearchInfo(std::shared_ptr<CSession> session,
         MysqlMgr::GetInstance()->FriendExists(session->GetUserId(), user->uid);
 }
 
+void LogicSystem::AddFriendApply(std::shared_ptr<CSession> session, const short &, const std::string &msgData) {
+    Json::Value request;
+    Json::Value response;
+    Json::Reader reader;
+
+    Defer reply([&] {
+        session->Send(response.toStyledString(), ID_ADD_FRIEND_RSP);
+    });
+
+    if (!reader.parse(msgData, request) ||
+        !request["touid"].isInt() ||
+        !request["descs"].isString() ||
+        !request["back_name"].isString()) {
+        response["error"] = ErrorCodes::Error_Json;
+        response["result"] = -1;
+        response["apply_id"] = Json::Int64(0);
+        return;
+        }
+
+    const int fromUid = session->GetUserId();
+    const int toUid = request["touid"].asInt();
+    const std::string descs = request["descs"].asString();
+    const std::string backName = request["back_name"].asString();
+
+    if (fromUid <= 0 || toUid <= 0 || fromUid == toUid ||
+        descs.size() > 255 || backName.size() > 64) {
+        response["error"] = ErrorCodes::UidInvalid;
+        response["result"] = -1;
+        response["apply_id"] = Json::Int64(0);
+        return;
+        }
+
+    const auto dbResult = MysqlMgr::GetInstance()->AddFriendApply(
+        fromUid, toUid, descs, backName);
+
+    response["error"] = ErrorCodes::Success;
+    response["result"] = dbResult.result;
+    response["apply_id"] = Json::Int64(dbResult.applyId);
+
+    if (dbResult.result != 0)
+        return;
+
+    // 数据库成功后再执行在线通知；通知失败不回滚申请。
+    NotifyFriendApplication(fromUid, toUid, dbResult.applyId, descs);
+}
+
 void LogicSystem::NotifyFriendApplication(
     int fromUid, int toUid, std::int64_t applyId,
     const std::string &descs)

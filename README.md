@@ -11,6 +11,17 @@ SakuraChat Server 是 SakuraChat 即时通讯系统的分布式后端微服务�
 
 ---
 
+## 当前好友功能进度（2026-09-08）
+
+服务端基线 40950c6，仅静态核对，未构建、运行测试或执行 SQL。
+
+- Common/MysqlDao 已接入好友申请保存、审核存储过程及待处理申请查询；两个 MysqlMgr 只转发到共享 DAO。
+- 登录回包 1006 增加 apply_list，最多 200 条；不是全量分页同步。
+- NotifyAddFriend RPC 调用和接收代码存在；NotifyAuthFriend 只有接收端落地，两个 RPC 客户端仍为空。
+- ChatServer1 声明并注册 AddFriendApply，但缺少定义；不能据此宣称两个节点都能成功构建或完成申请链路。
+- 完整协议位于 VarifyServer/message.proto；Node 直接加载它。start.bat 从当前工作目录生成文件，不自动同步 Common。C++ 构建使用 Common/include 与 Common/src 中的四个生成文件，旧 Common/message.proto 不能直接覆盖生成代码。
+- 详细缺口及导航见 [好友功能状态](../docs/FRIEND_FEATURE_STATUS.md)，契约见 [接口文档](../docs/INTERFACE_DESIGN.md)。这些根目录文档不包含在单独的 Server 仓库中。
+
 ## 🏗️ 系统微服务架构
 
 ```text
@@ -47,7 +58,7 @@ SakuraChat Server 是 SakuraChat 即时通讯系统的分布式后端微服务�
 3. **`ChatServer1` & `ChatServer2` (TCP 聊天服务器 - Port: 8090/8091 - Boost.Asio)**
    - 高并发异步网络模型：基于 Boost.Asio 异步 IO 线程池及事件循环（`AsioIOServicePool`）。
    - 持续监听处理：`CServer::StartAccept()` 迭代异步接收新套接字连接；`CSession` 负责解析 16-bit Header（ID + Length）并分发逻辑响应。
-   - 消息路由与推送：基于 Redis 发布订阅/用户节点映射管理在线状态与即时通讯。
+   - 消息路由与推送：通过 Redis 用户节点映射查找目标节点，同节点直接发送，跨节点调用 gRPC；当前不是 Redis 发布订阅方案。
 
 4. **`VarifyServer` (验证码服务 - Port: 50051 - Node.js gRPC)**
    - 使用 Node.js + Nodemailer 异步发送邮箱验证码，并写入 Redis 进行防刷控制与超时失效。
