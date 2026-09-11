@@ -42,6 +42,10 @@ enum ErrorCodes {
     PasswdInvalid = 1009, // 密码更新失败
     TokenInvalid = 1010,   //Token失效
     UidInvalid = 1011,  //uid无效
+    ChatNotFriend = 1101,
+    ChatTargetOffline = 1102,
+    ChatDataInvalid = 1103,
+    ChatDatabaseFailed = 1104
 };
 
 class Defer {
@@ -75,7 +79,12 @@ enum MSG_IDS {
     ID_NOTIFY_ADD_FRIEND_REQ = 1011,
     ID_AUTH_FRIEND_REQ = 1012,
     ID_AUTH_FRIEND_RSP = 1013,
-    ID_NOTIFY_AUTH_FRIEND_REQ = 1014
+    ID_NOTIFY_AUTH_FRIEND_REQ = 1014,
+    ID_TEXT_CHAT_MSG_REQ = 1015,
+    ID_TEXT_CHAT_MSG_RSP = 1016,
+    ID_NOTIFY_TEXT_CHAT_MSG_REQ = 1017,
+    ID_FRIEND_LIST_REQ = 1018,
+    ID_FRIEND_LIST_RSP = 1019
 };
 
 #define CODEPREFIX "code_"

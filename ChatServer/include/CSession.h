@@ -32,7 +32,7 @@ private:
     void HandleWrite(const boost::system::error_code& error, std::shared_ptr<CSession> shared_self);
     tcp::socket _socket;
     CServer* _server;
-    int _user_id;
+    int _user_id = 0;
     bool _b_close;
     bool _b_head_parse;
     std::mutex _send_lock;

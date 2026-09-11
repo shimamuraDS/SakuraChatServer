@@ -12,18 +12,15 @@ MysqlMgr::~MysqlMgr() {
 MysqlMgr::MysqlMgr() {
 }
 
-std::shared_ptr<UserInfo> MysqlMgr::GetUser(int uid)
-{
+std::shared_ptr<UserInfo> MysqlMgr::GetUser(int uid) {
     return _dao.GetUser(uid);
 }
 
-std::shared_ptr<UserInfo> MysqlMgr::GetUser(std::string name)
-{
+std::shared_ptr<UserInfo> MysqlMgr::GetUser(std::string name) {
     return _dao.GetUser(std::move(name));
 }
 
-bool MysqlMgr::FriendExists(int selfUid, int friendUid)
-{
+bool MysqlMgr::FriendExists(int selfUid, int friendUid) {
     return _dao.FriendExists(selfUid, friendUid);
 }
 
@@ -37,4 +34,8 @@ std::vector<PendingFriendApplyInfo> MysqlMgr::GetPendingFriendApplies(int toUid,
 
 ResolveFriendApplyResult MysqlMgr::ResolveFriendApply(std::int64_t applyId, int actorUid, bool agree) {
     return _dao.ResolveFriendApply(applyId, actorUid, agree);
+}
+
+FriendPageResult MysqlMgr::GetFriendPage(int selfUid, int afterUid, int limit) {
+    return _dao.GetFriendPage(selfUid, afterUid, limit);
 }

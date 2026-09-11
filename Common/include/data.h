@@ -55,4 +55,16 @@ struct ResolveFriendApplyResult {
     int toUid = 0;
 };
 
+struct FriendInfo {
+    int uid = 0;
+    std::string name, nick, icon, remark;
+    int gender = 0;
+};
+
+struct FriendPageResult {
+    bool ok = false;
+    bool hasMore = false;
+    std::vector<FriendInfo> items;
+};
+
 #endif //DATA_H

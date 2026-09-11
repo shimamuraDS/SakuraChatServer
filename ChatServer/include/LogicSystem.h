@@ -29,6 +29,8 @@ private:
     void ResolveFriendApply(std::shared_ptr<CSession>, const short &, const std::string &);
     void NotifyFriendApplication(int fromUid, int toUid, std::int64_t applyId, const std::string &descs);
     void NotifyFriendResolution(int applicantUid, int actorUid, std::int64_t applyId, bool agree);
+    void GetFriendList(std::shared_ptr<CSession>, const short &, const std::string &);
+    void DealChatTextMsg(std::shared_ptr<CSession>, const short &, const std::string &);
     std::thread _worker_thread;
     std::queue<std::shared_ptr<LogicNode>> _msg_que;
     std::mutex _mutex;

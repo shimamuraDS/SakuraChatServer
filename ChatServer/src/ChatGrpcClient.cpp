@@ -81,19 +81,42 @@ message::AddFriendRsp ChatGrpcClient::NotifyAddFriend(const std::string &serverN
     return response;
 }
 
-message::AuthFriendRsp ChatGrpcClient::NotifyAuthFriend(std::string server_ip, const message::AuthFriendReq& req) {
-    message::AuthFriendRsp rsp;
-    return rsp;
+message::AuthFriendRsp ChatGrpcClient::NotifyAuthFriend(std::string serverName, const message::AuthFriendReq &request) {
+    message::AuthFriendRsp response;
+    response.set_error(ErrorCodes::RPCFailed);
+    auto it = _pools.find(serverName);
+    if (it == _pools.end()) return response;
+    auto &pool = it->second;
+    auto stub = pool->getConnection();
+    if (!stub) return response;
+    Defer giveBack([&] { pool->returnConnection(std::move(stub)); });
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(3));
+    const auto status = stub->NotifyAuthFriend(&context, request, &response);
+    if (!status.ok()) response.set_error(ErrorCodes::RPCFailed);
+    return response;
 }
 
 bool ChatGrpcClient::GetBaseInfo(std::string base_key, int uid, std::shared_ptr<UserInfo>& user_info) {
     return true;
 }
 
-message::TextChatMsgRsp ChatGrpcClient::NotifyTextChatMsg(std::string server_ip, const message::TextChatMsgReq& req,
-    const Json::Value& rtvalue) {
-    message::TextChatMsgRsp rsp;
-    return rsp;
+message::TextChatMsgRsp ChatGrpcClient::NotifyTextChatMsg(std::string serverName,
+    const message::TextChatMsgReq &request, const Json::Value &)
+{
+    message::TextChatMsgRsp response;
+    response.set_error(ErrorCodes::RPCFailed);
+    auto it = _pools.find(serverName);
+    if (it == _pools.end()) return response;
+    auto &pool = it->second;
+    auto stub = pool->getConnection();
+    if (!stub) return response;
+    Defer giveBack([&] { pool->returnConnection(std::move(stub)); });
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(3));
+    const auto status = stub->NotifyTextChatMsg(&context, request, &response);
+    if (!status.ok()) response.set_error(ErrorCodes::RPCFailed);
+    return response;
 }
 
 ChatGrpcClient::ChatGrpcClient() {

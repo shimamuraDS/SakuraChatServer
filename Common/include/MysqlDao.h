@@ -53,6 +53,7 @@ public:
     FriendApplyResult AddFriendApply(int fromUid, int toUid, const std::string &descs, const std::string &backName);
     std::vector<PendingFriendApplyInfo> GetPendingFriendApplies(int toUid, std::int64_t afterId, int limit);
     ResolveFriendApplyResult ResolveFriendApply(std::int64_t applyId, int actorUid, bool agree);
+    FriendPageResult GetFriendPage(int selfUid, int afterUid, int limit);
 private:
     std::unique_ptr<MySqlPool> _pool;
 };

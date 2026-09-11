@@ -7,6 +7,7 @@
 #include <charconv>
 
 #include "ChatGrpcClient.h"
+#include "ChatWire.h"
 #include "ConfigMgr.h"
 #include "RedisMgr.h"
 #include "UserMgr.h"
@@ -21,6 +22,8 @@ void LogicSystem::RegisterCallBacks() {
     _fun_callbacks[ID_SEARCH_USER_REQ] = std::bind(&LogicSystem::SearchInfo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     _fun_callbacks[ID_ADD_FRIEND_REQ] = std::bind(&LogicSystem::AddFriendApply, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     _fun_callbacks[ID_AUTH_FRIEND_REQ] = std::bind(&LogicSystem::ResolveFriendApply, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    _fun_callbacks[ID_FRIEND_LIST_REQ] = std::bind(&LogicSystem::GetFriendList, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    _fun_callbacks[ID_TEXT_CHAT_MSG_REQ] = std::bind(&LogicSystem::DealChatTextMsg, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
 }
 
 void LogicSystem::DealMsg() {
@@ -438,4 +441,130 @@ void LogicSystem::NotifyFriendResolution(
     rpcRequest.set_agree(agree);
     ChatGrpcClient::GetInstance()->NotifyAuthFriend(
         targetServer, rpcRequest);
+}
+
+void LogicSystem::GetFriendList(std::shared_ptr<CSession> session,
+                               const short &, const std::string &body)
+{
+    Json::Value request, response;
+    response["error"] = ErrorCodes::ChatDataInvalid;
+    response["friend_list"] = Json::Value(Json::arrayValue);
+    response["has_more"] = false;
+    Defer reply([&] {
+        session->Send(ChatWire::Compact(response), ID_FRIEND_LIST_RSP);
+    });
+    Json::Reader reader;
+    if (body.size() > ChatWire::BodyLimit ||
+        !reader.parse(body, request) || !request.isObject() ||
+        !request["request_id"].isString() ||
+        !ChatWire::Uuid(request["request_id"].asString()) ||
+        !request["after_uid"].isInt())
+        return;
+
+    const int after = request["after_uid"].asInt();
+    response["request_id"] = request["request_id"];
+    response["after_uid"] = after;
+    response["next_uid"] = after;
+    const int uid = session->GetUserId();
+    if (uid <= 0 || after < 0) return;
+
+    const auto page = MysqlMgr::GetInstance()->GetFriendPage(uid, after, 10);
+    if (!page.ok) {
+        response["error"] = ErrorCodes::ChatDatabaseFailed;
+        return;
+    }
+    response["error"] = ErrorCodes::Success;
+    bool more = page.hasMore;
+    for (const auto &f : page.items) {
+        Json::Value item;
+        item["uid"] = f.uid;
+        item["name"] = f.name;
+        item["nick"] = f.nick;
+        item["icon"] = f.icon;
+        item["remark"] = f.remark;
+        item["gender"] = f.gender;
+
+        Json::Value candidate = response;
+        candidate["friend_list"].append(item);
+        candidate["next_uid"] = f.uid;
+        if (ChatWire::Compact(candidate).size() > ChatWire::BodyLimit) {
+            if (response["friend_list"].empty())
+                response["error"] = ErrorCodes::ChatDataInvalid;
+            else
+                more = true;
+            break;
+        }
+        response = std::move(candidate);
+    }
+    response["has_more"] = response["error"].asInt() == 0 && more;
+}
+
+void LogicSystem::DealChatTextMsg(std::shared_ptr<CSession> session,
+                                const short &, const std::string &body)
+{
+    Json::Value request, response;
+    response["error"] = ErrorCodes::ChatDataInvalid;
+    response["fromuid"] = session->GetUserId();
+    response["touid"] = 0;
+    response["msgid"] = "";
+    Defer reply([&] {
+        session->Send(ChatWire::Compact(response), ID_TEXT_CHAT_MSG_RSP);
+    });
+
+    Json::Reader reader;
+    if (body.size() > ChatWire::BodyLimit ||
+        !reader.parse(body, request) || !request.isObject() ||
+        !request["touid"].isInt() ||
+        !request["text_array"].isArray() ||
+        request["text_array"].size() != 1)
+        return;
+
+    const auto &item = request["text_array"][0];
+    if (!item.isObject() || !item["msgid"].isString() ||
+        !item["content"].isString()) return;
+    const auto id = item["msgid"].asString();
+    const auto content = item["content"].asString();
+    const int fromUid = session->GetUserId();
+    const int toUid = request["touid"].asInt();
+    response["touid"] = toUid;
+    // 只回显合法长度的 UUID，避免错误回包被恶意大字段撑爆。
+    if (ChatWire::Uuid(id)) response["msgid"] = id;
+    if (fromUid <= 0 || toUid <= 0 || fromUid == toUid ||
+        !ChatWire::Text(id, content)) return;
+
+    if (!MysqlMgr::GetInstance()->FriendExists(fromUid, toUid)) {
+        response["error"] = ErrorCodes::ChatNotFriend;
+        return;
+    }
+    const auto notification = ChatWire::Notification(fromUid, toUid, id, content);
+    const auto wire = ChatWire::Compact(notification);
+    if (wire.size() > ChatWire::BodyLimit) return;
+
+    std::string targetServer;
+    if (!RedisMgr::GetInstance()->Get(
+            std::string(USERIPPREFIX) + std::to_string(toUid), targetServer)) {
+        response["error"] = ErrorCodes::ChatTargetOffline;
+        return;
+    }
+    const auto selfServer = ConfigMgr::Inst().GetValue("SelfServer", "Name");
+    if (targetServer == selfServer) {
+        const auto target = UserMgr::GetInstance()->GetSession(toUid);
+        if (!target) {
+            response["error"] = ErrorCodes::ChatTargetOffline;
+            return;
+        }
+        target->Send(wire, ID_NOTIFY_TEXT_CHAT_MSG_REQ);
+        response["error"] = ErrorCodes::Success; // 仅表示执行了转发尝试
+        return;
+    }
+
+    message::TextChatMsgReq rpc;
+    rpc.set_fromuid(fromUid);
+    rpc.set_touid(toUid);
+    auto *text = rpc.add_textmsgs(); // 所有权归 rpc，不能 delete
+    text->set_msgid(id);
+    text->set_msgcontent(content);
+    const auto rsp = ChatGrpcClient::GetInstance()->NotifyTextChatMsg(
+        targetServer, rpc, notification);
+    response["error"] = rsp.error();
 }

@@ -550,3 +550,48 @@ ResolveFriendApplyResult MysqlDao::ResolveFriendApply(std::int64_t applyId, int 
 
     return output;
 }
+
+FriendPageResult MysqlDao::GetFriendPage(int selfUid, int afterUid, int limit) {
+    FriendPageResult out;
+    if (selfUid <= 0 || afterUid < 0)
+        return out;
+    limit = std::clamp(limit, 1, 10);
+    auto con = _pool->getConnection();
+    if (!con)
+        return out;
+    Defer giveBack([this, &con] {
+        _pool->returnConnection(std::move(con));
+    });
+    try {
+        std::unique_ptr<sql::PreparedStatement> stmt(
+            con->_con->prepareStatement(
+                "SELECT u.uid,u.name,u.nick,u.icon,u.gender,f.remark "
+                "FROM friend f JOIN user u ON u.uid=f.friend_uid "
+                "WHERE f.self_uid=? AND f.friend_uid>? AND u.status=0 "
+                "ORDER BY f.friend_uid ASC LIMIT ?"));
+        stmt->setInt(1, selfUid);
+        stmt->setInt(2, afterUid);
+        stmt->setInt(3, limit + 1);
+        std::unique_ptr<sql::ResultSet> res(stmt->executeQuery());
+        while (res->next()) {
+            if (static_cast<int>(out.items.size()) == limit) {
+                out.hasMore = true;
+                break;
+            }
+            FriendInfo item;
+            item.uid = res->getInt("uid");
+            item.name = res->getString("name");
+            item.nick = res->getString("nick");
+            item.icon = res->getString("icon");
+            item.gender = res->getInt("gender");
+            item.remark = res->getString("remark");
+            out.items.push_back(std::move(item));
+        }
+        out.ok = true;
+    } catch (const sql::SQLException &e) {
+        std::cerr << "GetFriendPage failed, code="
+                  << e.getErrorCode() << std::endl;
+        out = FriendPageResult{};
+    }
+    return out;
+}
