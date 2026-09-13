@@ -2,6 +2,7 @@
 #include <grpcpp/server_builder.h>
 
 #include "ConfigMgr.h"
+#include "RpcSecurity.h"
 
 //
 // Created by adachi on 25-11-25.
@@ -10,15 +11,17 @@ void RunServer() {
     auto& cfg = ConfigMgr::Inst();
 
     std::string server_address(cfg["StatusServer"]["Host"] + ":" + cfg["StatusServer"]["Port"]);
+    if (RpcSecurity::Development()) server_address = "127.0.0.1:" + cfg["StatusServer"]["Port"];
     StatusServiceImpl service;
 
     grpc::ServerBuilder builder;
     // 监听端口和添加服务
-    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.AddListeningPort(server_address, RpcSecurity::Server());
     builder.RegisterService(&service);
 
     // 构建并启动gRPC服务器
     std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
+    if (!server) throw std::runtime_error("Cannot start Status RPC server");
     std::cout << "Server listening on " << server_address << std::endl;
 
     // 创建Boost.Asio的io_context

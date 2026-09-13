@@ -3,13 +3,14 @@
 //
 
 #include "VerifyGrpcClient.h"
+#include "RpcSecurity.h"
 #include "AsioIOServicePool.h"
 #include "ConfigMgr.h"
 
 RPConPool::RPConPool(size_t poolsize, std::string host, std::string port):
 _poolSize(poolsize), _host(host), _port(port), _b_stop(false) {
     for (size_t i = 0; i < _poolSize; i++) {
-        std::shared_ptr<Channel> channel = grpc::CreateChannel(host + ":" + port, grpc::InsecureChannelCredentials());
+        std::shared_ptr<Channel> channel = grpc::CreateChannel(host + ":" + port, RpcSecurity::Channel(host));
         _connections.push(VarifyService::NewStub(channel));
     }
 }
@@ -56,13 +57,21 @@ void RPConPool::returnConnection(std::unique_ptr<VarifyService::Stub> context) {
 }
 
 
-GetVarifyRsp VerifyGrpcClient::GetVarifyCode(std::string email) {
+GetVarifyRsp VerifyGrpcClient::GetVarifyCode(std::string email, const std::string &purpose) {
     ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    context.AddMetadata("verify-purpose", purpose);
+    if (!RpcSecurity::Development()) {
+        const char *key = std::getenv("SAKURA_VERIFY_SERVICE_KEY");
+        if (!key || std::string(key).size() < 32) throw std::runtime_error("Missing SAKURA_VERIFY_SERVICE_KEY");
+        context.AddMetadata("verify-service-key", key);
+    }
     GetVarifyRsp reply;
     GetVarifyReq request;
     request.set_email(email);
 
     auto stub = _pool->getConnection();
+    if (!stub) { reply.set_error(ErrorCodes::RPCFailed); return reply; }
     Status status = stub->GetVarifyCode(&context, request, &reply);
     if (status.ok()) {
         _pool->returnConnection(std::move(stub));

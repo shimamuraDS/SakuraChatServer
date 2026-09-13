@@ -41,7 +41,7 @@ private:
 class VerifyGrpcClient:public Singleton<VerifyGrpcClient>{
     friend class Singleton<VerifyGrpcClient>;
 public:
-    GetVarifyRsp GetVarifyCode(std::string email);
+    GetVarifyRsp GetVarifyCode(std::string email, const std::string &purpose);
 
 private:
     VerifyGrpcClient();

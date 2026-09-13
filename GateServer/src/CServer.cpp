@@ -8,7 +8,7 @@
 #include "AsioIOServicePool.h"
 
 CServer::CServer(net::io_context& ioc, unsigned short& port) : _ioc(ioc),
-                                                               _acceptor(ioc, tcp::endpoint(tcp::v4(), port)) {
+                                                               _acceptor(ioc, tcp::endpoint(net::ip::make_address("127.0.0.1"), port)) {
 }
 
 void CServer::Start() {

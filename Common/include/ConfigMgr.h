@@ -68,20 +68,26 @@ public:
 
     // 拷贝构造函数
     ConfigMgr(const ConfigMgr& src) {
+        _production = src._production;
         this->_config_map = src._config_map;
     }
     // 赋值运算符重载
     ConfigMgr& operator = (const ConfigMgr& src) {
+        _production = src._production;
         if (&src == this) {
             return *this;
         }
 
         this->_config_map = src._config_map;
+        return *this;
     }
 
+    void RequireDatabaseCredentials();
     std::string GetValue(const std::string& section, const std::string& key);
+    bool Production() const { return _production; }
 private:
     ConfigMgr();
+    bool _production = false;
     std::map<std::string, SectionInfo> _config_map;
 };
 

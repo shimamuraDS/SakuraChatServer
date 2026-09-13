@@ -3,6 +3,7 @@
 //
 
 #include "UserMgr.h"
+#include "RedisMgr.h"
 
 UserMgr:: ~ UserMgr(){
     _uid_to_session.clear();
@@ -11,19 +12,34 @@ UserMgr:: ~ UserMgr(){
 
 std::shared_ptr<CSession> UserMgr::GetSession(int uid)
 {
-    std::lock_guard<std::mutex> lock(_session_mtx);
+    std::unique_lock<std::mutex> lock(_session_mtx);
     auto iter = _uid_to_session.find(uid);
     if (iter == _uid_to_session.end()) {
         return nullptr;
     }
 
-    return iter->second;
+    auto session = iter->second;
+    lock.unlock();
+    std::string digest;
+    if (!RedisMgr::GetInstance()->Get(std::string(USERTOKENPREFIX) + std::to_string(uid), digest) || digest != session->AuthDigest()) {
+        session->Close();
+        return nullptr;
+    }
+    return session;
 }
 
 void UserMgr::SetUserSession(int uid, std::shared_ptr<CSession> session)
 {
-    std::lock_guard<std::mutex> lock(_session_mtx);
-    _uid_to_session[uid] = session;
+    std::shared_ptr<CSession> previous;
+    {
+        std::lock_guard<std::mutex> lock(_session_mtx);
+        if (session->IsClosed()) return;
+        auto &current = _uid_to_session[uid];
+        previous = std::move(current);
+        current = session;
+    }
+    // Do not close under the map lock: closing removes the old session from the map.
+    if (previous && previous != session) previous->Close();
 }
 
 void UserMgr::RmvUserSession(int uid, std::string session_id)

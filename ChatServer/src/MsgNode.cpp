@@ -3,8 +3,10 @@
 //
 
 #include "MsgNode.h"
+#include <stdexcept>
 
 MsgNode::MsgNode(short max_len) :_total_len(max_len), _cur_len(0) {
+    if (max_len <= 0) throw std::invalid_argument("invalid message buffer length");
     _data = new char[_total_len + 1]();
     _data[_total_len] = '\0';
 }

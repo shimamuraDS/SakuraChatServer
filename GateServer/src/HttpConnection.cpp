@@ -5,6 +5,7 @@
 #include "HttpConnection.h"
 #include "LogicSystem.h"
 #include <iostream>
+#include <stdexcept>
 
 HttpConnection::HttpConnection(net::io_context& ioc): _socket(ioc) {
 }
@@ -12,34 +13,44 @@ HttpConnection::HttpConnection(net::io_context& ioc): _socket(ioc) {
 // 启动HTTP连接，开始异步读取请求
 void HttpConnection::Start() {
     auto self = shared_from_this();
-    http::async_read(_socket, _buffer, _request, [self](beast::error_code ec, std::size_t bytes_transferred) {
+    _parser.body_limit(16 * 1024);
+    _parser.header_limit(8 * 1024);
+    _deadline.expires_after(std::chrono::seconds(15));
+    CheckDeadline();
+    http::async_read(_socket, _buffer, _parser, [self](beast::error_code ec, std::size_t bytes_transferred) {
         try {
             if (ec) {
                 std::cout << "http read err is " << ec.what() << std::endl;
+                beast::error_code ignored;
+                self->_socket.close(ignored);
+                self->_deadline.cancel();
                 return;
             }
 
             boost::ignore_unused(bytes_transferred);
+            self->_request = self->_parser.release();
             self->HandleRequest();
-            self->CheckDeadline();
         }
         catch (std::exception& e) {
-            std::cout << "exception is " << e.what() << std::endl;
+            std::cerr << "HTTP request rejected" << std::endl;
+            beast::error_code ignored;
+            self->_socket.close(ignored);
+            self->_deadline.cancel();
         }
     });
 }
 
 unsigned char ToHex(unsigned char x) {
-    return x < 9 ? x + 55 : x + 48;
+    return x < 10 ? x + '0' : x - 10 + 'A';
 }
 
 unsigned char FromHex(unsigned char x) {
     unsigned char y;
-    if (x >= 'A' && x <= 'Z') y = x - 'A' + 10;
-    else if (x >= 'a' && x <= 'z') y = x - 'a' + 10;
+    if (x >= 'A' && x <= 'F') y = x - 'A' + 10;
+    else if (x >= 'a' && x <= 'f') y = x - 'a' + 10;
     else if (x >= '0' && x <= '9') y = x - '0';
     else
-        assert(0);
+        throw std::invalid_argument("invalid URL escape");
     return y;
 }
 
@@ -72,7 +83,7 @@ std::string UrlDecode(const std::string& str) {
     for (size_t i = 0; i < length; i++) {
         if (str[i] == '+') strTemp += ' ';
         else if (str[i] == '%') {
-            assert(i + 2 < length);
+            if (length - i < 3) throw std::invalid_argument("incomplete URL escape");
             unsigned char high = FromHex((unsigned char)str[++i]);
             unsigned char low = FromHex((unsigned char)str[++i]);
             strTemp += high * 16 + low;
@@ -127,7 +138,14 @@ void HttpConnection::HandleRequest() {
 
     // 处理GET请求
     if (_request.method() == http::verb::get) {
-        PreParseGetParam();
+        try { PreParseGetParam(); }
+        catch (const std::invalid_argument &) {
+            _response.result(http::status::bad_request);
+            _response.set(http::field::content_type, "text/plain");
+            beast::ostream(_response.body()) << "Invalid request target";
+            WriteResponse();
+            return;
+        }
         bool success = LogicSystem::GetInstance()->HandleGet(_get_url, shared_from_this());
         if (!success) {
             _response.result(http::status::not_found);
@@ -157,6 +175,10 @@ void HttpConnection::HandleRequest() {
         WriteResponse();
         return;
     }
+
+    _response.result(http::status::method_not_allowed);
+    _response.set(http::field::allow, "GET, POST");
+    WriteResponse();
 }
 
 // 发送HTTP响应

@@ -10,7 +10,17 @@
 #include "ChatWire.h"
 #include "ConfigMgr.h"
 #include "RedisMgr.h"
+#include "PasswordSecurity.h"
 #include "UserMgr.h"
+
+namespace {
+void redactProfile(Json::Value &item, int owner, int actor) {
+    if (!MysqlMgr::GetInstance()->PrivacyAllows(owner, actor, "profile_policy")) {
+        item["icon"] = ""; item["nick"] = ""; item["gender"] = 0;
+        if (item.isMember("desc")) item["desc"] = "";
+    }
+}
+}
 
 LogicSystem::LogicSystem():_b_stop(false) {
     RegisterCallBacks();
@@ -18,6 +28,19 @@ LogicSystem::LogicSystem():_b_stop(false) {
 }
 
 void LogicSystem::RegisterCallBacks() {
+    _fun_callbacks[1042] = [](std::shared_ptr<CSession> session, const short &, const std::string &) {
+        RedisMgr::GetInstance()->DeleteIfEqual(std::string(USERTOKENPREFIX) + std::to_string(session->GetUserId()), session->AuthDigest());
+        session->Close();
+    };
+    _fun_callbacks[1040] = [](std::shared_ptr<CSession> session, const short &, const std::string &body) {
+        Json::Value request; Json::Reader reader;
+        if (!reader.parse(body, request) || !request.isObject() || !request["request_id"].isString() || request["request_id"].asString().size() > 64) { session->Close(); return; }
+        auto result = MysqlMgr::GetInstance()->PrivacyCommand(session->GetUserId(), request);
+        result["request_id"] = request["request_id"];
+        session->Send(ChatWire::Compact(result), 1041);
+    };
+    for (short id : {ID_CHAT_HISTORY_REQ, ID_MESSAGE_RECEIPT_REQ, ID_MESSAGE_STATUS_REQ, ID_CONVERSATION_LIST_REQ, ID_MESSAGE_DELETE_REQ, ID_DELETION_EVENTS_REQ})
+        _fun_callbacks[id] = std::bind(&LogicSystem::ChatSync, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     _fun_callbacks[MSG_CHAT_LOGIN] = std::bind(&LogicSystem::LoginHandler, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     _fun_callbacks[ID_SEARCH_USER_REQ] = std::bind(&LogicSystem::SearchInfo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     _fun_callbacks[ID_ADD_FRIEND_REQ] = std::bind(&LogicSystem::AddFriendApply, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -29,46 +52,49 @@ void LogicSystem::RegisterCallBacks() {
 void LogicSystem::DealMsg() {
     for (;;) {
         std::unique_lock<std::mutex> unique_lk(_mutex);
-        while (_msg_que.empty() && !_b_stop) {
-            _consume.wait(unique_lk);
-        }
-
-        if (_b_stop) {
-            while (!_msg_que.empty()) {
-                auto msg_node = _msg_que.front();
-                std::cout << "recv_msg id is " << msg_node->_recvnode->_msg_id << std::endl;
-                auto call_back_iter = _fun_callbacks.find(msg_node->_recvnode->_msg_id);
-                if (call_back_iter != _fun_callbacks.end()) {
-                    _msg_que.pop();
-                    continue;
-                }
-                call_back_iter->second(msg_node->_session, msg_node->_recvnode->_msg_id, std::string(msg_node->_recvnode->_data, msg_node->_recvnode->_cur_len));
-                _msg_que.pop();
-            }
-            break;
-        }
-
+        _consume.wait(unique_lk, [this] { return _b_stop || !_msg_que.empty(); });
+        if (_b_stop && _msg_que.empty()) break;
         auto msg_node = _msg_que.front();
-        std::cout << "recv_msg id is " << msg_node->_recvnode->_msg_id << std::endl;
+        _msg_que.pop();
+        unique_lk.unlock();
+        // A flushed logout may already be followed by TCP EOF. Still revoke its token.
+        if (msg_node->_session->IsClosed() && msg_node->_recvnode->_msg_id != 1042) continue;
         auto call_back_iter = _fun_callbacks.find(msg_node->_recvnode->_msg_id);
-        if (call_back_iter == _fun_callbacks.end()) {
-            _msg_que.pop();
-            std::cout << "msg id [" << msg_node->_recvnode->_msg_id << "] handler not found" << std::endl;
+        const bool login = msg_node->_recvnode->_msg_id == MSG_CHAT_LOGIN;
+        if (call_back_iter == _fun_callbacks.end() ||
+            (login ? msg_node->_session->GetUserId() != 0 : msg_node->_session->GetUserId() <= 0)) {
+            msg_node->_session->Close();
             continue;
         }
-        call_back_iter->second(msg_node->_session, msg_node->_recvnode->_msg_id, std::string(msg_node->_recvnode->_data, msg_node->_recvnode->_cur_len));
-        _msg_que.pop();
+        try {
+            if (!login) {
+                std::string expected;
+                if (!RedisMgr::GetInstance()->Get(std::string(USERTOKENPREFIX) + std::to_string(msg_node->_session->GetUserId()), expected) ||
+                    expected != msg_node->_session->AuthDigest()) {
+                    msg_node->_session->Close();
+                    continue;
+                }
+            }
+            call_back_iter->second(msg_node->_session, msg_node->_recvnode->_msg_id,
+                                  std::string(msg_node->_recvnode->_data, msg_node->_recvnode->_cur_len));
+        } catch (...) {
+            std::cerr << "Chat request rejected" << std::endl;
+            msg_node->_session->Close();
+        }
     }
 }
 
 void LogicSystem::LoginHandler(std::shared_ptr<CSession> session, const short& msg_id, const std::string& msg_data) {
     Json::Reader reader;
     Json::Value root;
-    reader.parse(msg_data, root);
+    if (!reader.parse(msg_data, root) || !root.isObject() || !root["uid"].isInt() ||
+        root["uid"].asInt() <= 0 || !root["token"].isString() ||
+        root["token"].asString().empty() || root["token"].asString().size() > 256) {
+        session->Close();
+        return;
+    }
     auto uid = root["uid"].asInt();
     auto token = root["token"].asString();
-    std::cout << "user login uid is  " << uid << " user token  is "
-        << token << std::endl;
 
     // auto rsp = StatusGrpcClient::GetInstance()->Login(uid, root["token"].asString());
     Json::Value rtvalue;
@@ -90,7 +116,7 @@ void LogicSystem::LoginHandler(std::shared_ptr<CSession> session, const short& m
         rtvalue["error"] = ErrorCodes::UidInvalid;
         return;
     }
-    if (token_value != token) {
+    if (token_value != PasswordSecurity::Digest(token)) {
         rtvalue["error"] = ErrorCodes::TokenInvalid;
         return;
     }
@@ -104,7 +130,7 @@ void LogicSystem::LoginHandler(std::shared_ptr<CSession> session, const short& m
         return;
     }
     rtvalue["uid"] = uid;
-    rtvalue["pwd"] = user_info->pwd;
+    rtvalue["chat_protocol_version"] = 2;
     rtvalue["name"] = user_info->name;
     rtvalue["email"] = user_info->email;
     rtvalue["nick"] = user_info->nick;
@@ -123,6 +149,7 @@ void LogicSystem::LoginHandler(std::shared_ptr<CSession> session, const short& m
     auto count_str = std::to_string(count);
     RedisMgr::GetInstance()->HSet(std::string(LOGIN_COUNT), server_name, count_str);
 
+    session->SetAuthDigest(token_value);
     session->SetUserId(uid);
 
     // 为用户设置登陆ip server名字
@@ -148,6 +175,7 @@ void LogicSystem::LoginHandler(std::shared_ptr<CSession> session, const short& m
         item["icon"] = apply.icon;
         item["message"] = apply.descs;
         item["status"] = apply.status;
+        redactProfile(item, apply.uid, uid);
 
         rtvalue["apply_list"].append(item);
     }
@@ -161,14 +189,12 @@ bool LogicSystem::GetBaseInfo(std::string base_key, int uid, std::shared_ptr<Use
         Json::Value root;
         reader.parse(info_str, root);
         userinfo->uid = root["uid"].asInt();
-        userinfo->pwd = root["pwd"].asString();
         userinfo->name = root["name"].asString();
         userinfo->email = root["email"].asString();
         userinfo->nick = root["nick"].asString();
         userinfo->desc = root["desc"].asString();
         userinfo->gender = root["gender"].asInt();
         userinfo->icon = root["icon"].asString();
-        std::cout << "user login uid is " << userinfo->uid << " user name is " << userinfo->name << " email is " << userinfo->email << " pwd is " << userinfo->pwd << std::endl;
     } else {
         std::shared_ptr<UserInfo> user_info = nullptr;
         user_info = MysqlMgr::GetInstance()->GetUser(uid);
@@ -179,7 +205,6 @@ bool LogicSystem::GetBaseInfo(std::string base_key, int uid, std::shared_ptr<Use
 
         Json::Value redis_root;
         redis_root["uid"] = userinfo->uid;
-        redis_root["pwd"] = userinfo->pwd;
         redis_root["name"] = userinfo->name;
         redis_root["email"] = userinfo->email;
         redis_root["nick"] = userinfo->nick;
@@ -192,13 +217,18 @@ bool LogicSystem::GetBaseInfo(std::string base_key, int uid, std::shared_ptr<Use
 }
 
 LogicSystem::~LogicSystem() {
-    _b_stop = true;
+    { std::lock_guard<std::mutex> lock(_mutex); _b_stop = true; }
     _consume.notify_one();
     _worker_thread.join();
 }
 
 void LogicSystem::PostMsgToQue(std::shared_ptr<LogicNode> msg) {
     std::unique_lock<std::mutex> unique_lk(_mutex);
+    if (_b_stop || _msg_que.size() >= MAX_RECVQUE) {
+        unique_lk.unlock();
+        msg->_session->Close();
+        return;
+    }
     _msg_que.push(msg);
     if (_msg_que.size() == 1) {
         unique_lk.unlock();
@@ -252,6 +282,7 @@ void LogicSystem::SearchInfo(std::shared_ptr<CSession> session,
     }
 
     response["error"] = ErrorCodes::Success;
+    if (user && !MysqlMgr::GetInstance()->PrivacyAllows(user->uid, session->GetUserId(), "search_policy")) user.reset();
     response["found"] = user != nullptr;
     if (!user)
         return;
@@ -263,6 +294,9 @@ void LogicSystem::SearchInfo(std::shared_ptr<CSession> session,
     response["desc"] = user->desc;
     response["gender"] = user->gender;
     response["icon"] = user->icon;
+    if (!MysqlMgr::GetInstance()->PrivacyAllows(user->uid, session->GetUserId(), "profile_policy")) {
+        response["icon"] = ""; response["desc"] = ""; response["nick"] = ""; response["gender"] = 0;
+    }
     response["is_friend"] =
         session->GetUserId() != user->uid &&
         MysqlMgr::GetInstance()->FriendExists(session->GetUserId(), user->uid);
@@ -300,6 +334,11 @@ void LogicSystem::AddFriendApply(std::shared_ptr<CSession> session, const short 
         return;
         }
 
+    if (!MysqlMgr::GetInstance()->PrivacyAllows(toUid, fromUid, "request_policy")) {
+        response["error"] = ErrorCodes::ChatNotFriend;
+        response["result"] = -1;
+        return;
+    }
     const auto dbResult = MysqlMgr::GetInstance()->AddFriendApply(
         fromUid, toUid, descs, backName);
 
@@ -332,6 +371,7 @@ void LogicSystem::NotifyFriendApplication(
     notify["icon"] = applicant->icon;
     notify["gender"] = applicant->gender;
     notify["message"] = descs;
+    redactProfile(notify, fromUid, toUid);
     const std::string notificationJson = notify.toStyledString();
 
     const std::string routeKey =
@@ -483,6 +523,7 @@ void LogicSystem::GetFriendList(std::shared_ptr<CSession> session,
         item["icon"] = f.icon;
         item["remark"] = f.remark;
         item["gender"] = f.gender;
+        redactProfile(item, f.uid, uid);
 
         Json::Value candidate = response;
         candidate["friend_list"].append(item);
@@ -503,68 +544,108 @@ void LogicSystem::DealChatTextMsg(std::shared_ptr<CSession> session,
                                 const short &, const std::string &body)
 {
     Json::Value request, response;
+    const int fromUid = session->GetUserId();
     response["error"] = ErrorCodes::ChatDataInvalid;
-    response["fromuid"] = session->GetUserId();
+    response["fromuid"] = fromUid;
     response["touid"] = 0;
     response["msgid"] = "";
-    Defer reply([&] {
-        session->Send(ChatWire::Compact(response), ID_TEXT_CHAT_MSG_RSP);
-    });
-
+    auto reply = [&] { session->Send(ChatWire::Compact(response), ID_TEXT_CHAT_MSG_RSP); };
     Json::Reader reader;
-    if (body.size() > ChatWire::BodyLimit ||
+    if (fromUid <= 0 || body.size() > ChatWire::BodyLimit ||
         !reader.parse(body, request) || !request.isObject() ||
-        !request["touid"].isInt() ||
-        !request["text_array"].isArray() ||
-        request["text_array"].size() != 1)
-        return;
-
+        !request["touid"].isInt() || !request["text_array"].isArray() ||
+        request["text_array"].size() != 1) { reply(); return; }
     const auto &item = request["text_array"][0];
-    if (!item.isObject() || !item["msgid"].isString() ||
-        !item["content"].isString()) return;
-    const auto id = item["msgid"].asString();
-    const auto content = item["content"].asString();
-    const int fromUid = session->GetUserId();
+    if (!item.isObject() || !item["msgid"].isString() || !item["content"].isString()) { reply(); return; }
+    const auto id = item["msgid"].asString(), content = item["content"].asString();
     const int toUid = request["touid"].asInt();
     response["touid"] = toUid;
-    // 只回显合法长度的 UUID，避免错误回包被恶意大字段撑爆。
     if (ChatWire::Uuid(id)) response["msgid"] = id;
-    if (fromUid <= 0 || toUid <= 0 || fromUid == toUid ||
-        !ChatWire::Text(id, content)) return;
-
-    if (!MysqlMgr::GetInstance()->FriendExists(fromUid, toUid)) {
-        response["error"] = ErrorCodes::ChatNotFriend;
-        return;
-    }
-    const auto notification = ChatWire::Notification(fromUid, toUid, id, content);
-    const auto wire = ChatWire::Compact(notification);
-    if (wire.size() > ChatWire::BodyLimit) return;
-
-    std::string targetServer;
-    if (!RedisMgr::GetInstance()->Get(
-            std::string(USERIPPREFIX) + std::to_string(toUid), targetServer)) {
-        response["error"] = ErrorCodes::ChatTargetOffline;
-        return;
-    }
-    const auto selfServer = ConfigMgr::Inst().GetValue("SelfServer", "Name");
-    if (targetServer == selfServer) {
-        const auto target = UserMgr::GetInstance()->GetSession(toUid);
-        if (!target) {
-            response["error"] = ErrorCodes::ChatTargetOffline;
+    // Reserve metadata and pagination overhead, including worst-case JSON escaping.
+    Json::Value encoded; encoded["content"] = content;
+    if (toUid <= 0 || toUid == fromUid || !ChatWire::Text(id, content) ||
+        ChatWire::Compact(encoded).size() > 850) { reply(); return; }
+    auto saved = MysqlMgr::GetInstance()->StoreTextMessage(fromUid, toUid, id, content);
+    response["error"] = saved["error"];
+    if (saved["error"].asInt() != 0 || !saved["message"].isObject()) { reply(); return; }
+    response = saved["message"];
+    response.removeMember("content");
+    response["error"] = 0;
+    reply(); // The commit, not the RPC result, defines successful submission.
+    try {
+        Json::Value notification;
+        notification["error"] = 0;
+        notification["message"] = saved["message"];
+        const auto wire = ChatWire::Compact(notification);
+        std::string targetServer;
+        if (!RedisMgr::GetInstance()->Get(std::string(USERIPPREFIX) + std::to_string(toUid), targetServer)) return;
+        if (targetServer == ConfigMgr::Inst().GetValue("SelfServer", "Name")) {
+            const auto target = UserMgr::GetInstance()->GetSession(toUid);
+            if (target) target->Send(wire, ID_NOTIFY_TEXT_CHAT_MSG_REQ);
             return;
         }
-        target->Send(wire, ID_NOTIFY_TEXT_CHAT_MSG_REQ);
-        response["error"] = ErrorCodes::Success; // 仅表示执行了转发尝试
-        return;
+        message::TextChatMsgReq rpc;
+        rpc.set_fromuid(fromUid); rpc.set_touid(toUid);
+        auto *text = rpc.add_textmsgs(); text->set_msgid(id); text->set_msgcontent(content);
+        ChatGrpcClient::GetInstance()->NotifyTextChatMsg(targetServer, rpc, notification);
+    } catch (...) {
+        // History synchronization recovers missed notifications; never send a second reply.
+        std::cerr << "Online chat notification unavailable\n";
     }
+}
 
-    message::TextChatMsgReq rpc;
-    rpc.set_fromuid(fromUid);
-    rpc.set_touid(toUid);
-    auto *text = rpc.add_textmsgs(); // 所有权归 rpc，不能 delete
-    text->set_msgid(id);
-    text->set_msgcontent(content);
-    const auto rsp = ChatGrpcClient::GetInstance()->NotifyTextChatMsg(
-        targetServer, rpc, notification);
-    response["error"] = rsp.error();
+void LogicSystem::ChatSync(std::shared_ptr<CSession> session, const short &id, const std::string &body)
+{
+    Json::Value req, rsp; rsp["error"] = ChatDataInvalid;
+    const int actor = session->GetUserId();
+    Defer reply([&] { session->Send(ChatWire::Compact(rsp), static_cast<short>(id + 1)); });
+    Json::Reader reader;
+    if (actor <= 0 || body.size() > ChatWire::BodyLimit || !reader.parse(body, req) ||
+        !req.isObject() || !req["request_id"].isString() ||
+        !ChatWire::Uuid(req["request_id"].asString())) return;
+    const std::string requestId = req["request_id"].asString();
+    rsp["request_id"] = requestId;
+    auto number = [](const Json::Value &value, std::uint64_t &out) {
+        if (!value.isString()) return false;
+        const auto s = value.asString();
+        if (s.empty() || s.size() > 20) return false;
+        const auto parsed = std::from_chars(s.data(), s.data() + s.size(), out);
+        return parsed.ec == std::errc{} && parsed.ptr == s.data() + s.size();
+    };
+    std::uint64_t cursor = 0;
+    auto mgr = MysqlMgr::GetInstance();
+    if (id == ID_MESSAGE_DELETE_REQ) {
+        if (!number(req["message_id"], cursor) || !cursor || !req["for_everyone"].isBool()) return;
+        rsp = mgr->DeleteMessage(actor, cursor, req["for_everyone"].asBool());
+    } else if (id == ID_DELETION_EVENTS_REQ) {
+        if (!number(req["after_event"], cursor)) return;
+        rsp = mgr->DeletionEvents(actor, cursor);
+        rsp["after_event"] = req["after_event"];
+    } else if (id == ID_CHAT_HISTORY_REQ) {
+        if (!req["peer_uid"].isInt() || req["peer_uid"].asInt() <= 0 ||
+            req["peer_uid"].asInt() == actor || !number(req["after_seq"], cursor)) return;
+        rsp = mgr->ChatHistory(actor, req["peer_uid"].asInt(), cursor);
+        rsp["peer_uid"] = req["peer_uid"]; rsp["after_seq"] = req["after_seq"];
+    } else if (id == ID_CONVERSATION_LIST_REQ) {
+        if (!number(req["after_thread"], cursor)) return;
+        rsp = mgr->ChatConversations(actor, cursor);
+        rsp["after_thread"] = req["after_thread"];
+    } else if (id == ID_MESSAGE_RECEIPT_REQ) {
+        if (!number(req["message_id"], cursor) || cursor == 0 || !req["receipt"].isString()) return;
+        const auto state = req["receipt"].asString();
+        if (state != "delivered" && state != "read") return;
+        rsp = mgr->RecordReceipt(actor, cursor, state == "read");
+    } else if (id == ID_MESSAGE_STATUS_REQ) {
+        if (!req["msgids"].isArray() || req["msgids"].empty() || req["msgids"].size() > 4) return;
+        std::vector<std::string> ids;
+        for (const auto &v : req["msgids"]) {
+            if (!v.isString() || v.asString().empty() || v.asString().size() > 64) return;
+            ids.push_back(v.asString());
+        }
+        rsp = mgr->MessageStates(actor, ids);
+    }
+    rsp["request_id"] = requestId;
+    if (ChatWire::Compact(rsp).size() > ChatWire::BodyLimit) {
+        rsp = Json::Value{}; rsp["error"] = ChatDataInvalid; rsp["request_id"] = requestId;
+    }
 }

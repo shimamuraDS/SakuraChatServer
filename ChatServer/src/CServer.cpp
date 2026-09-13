@@ -4,7 +4,7 @@
 
 #include "CServer.h"
 
-CServer::CServer(boost::asio::io_context& io_context, short port) : _io_context(io_context), _port(port), _acceptor(io_context, tcp::endpoint(tcp::v4(), port)) {
+CServer::CServer(boost::asio::io_context& io_context, short port) : _io_context(io_context), _port(port), _acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address("127.0.0.1"), port)) {
     std::cout << "Server start success, listen on port: " << _port << std::endl;
     StartAccept();
 }
@@ -24,9 +24,16 @@ void CServer::ClearSession(std::string session_id) {
 
 void CServer::HandleAccept(std::shared_ptr<CSession> new_session, const boost::system::error_code& error) {
     if (!error) {
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_sessions.size() >= 4096) {
+                new_session->Close();
+                StartAccept();
+                return;
+            }
+            _sessions.insert(std::make_pair(new_session->GetSessionId(), new_session));
+        }
         new_session->Start();
-        std::lock_guard<std::mutex> lock(_mutex);
-        _sessions.insert(std::make_pair(new_session->GetSessionId(), new_session));
         std::cout << "New connection accepted" << std::endl;
     } else {
         std::cout << "Accept error: " << error.message() << std::endl;

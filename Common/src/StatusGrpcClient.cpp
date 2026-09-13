@@ -3,6 +3,7 @@
 //
 
 #include "StatusGrpcClient.h"
+#include "RpcSecurity.h"
 
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
@@ -11,7 +12,7 @@ using grpc::Channel;
 
 StatusConPool::StatusConPool(size_t poolSize, std::string host, std::string port) : _poolSize(poolSize), _host(host), _port(port), _b_stop(false) {
     for (size_t i = 0; i < _poolSize; i++) {
-        std::shared_ptr<Channel> channel = grpc::CreateChannel(host + ":" + port, grpc::InsecureChannelCredentials());
+        std::shared_ptr<Channel> channel = grpc::CreateChannel(host + ":" + port, RpcSecurity::Channel(host));
         _connections.push(StatusService::NewStub(channel));
     }
 }
@@ -56,10 +57,12 @@ void StatusConPool::Close() {
 
 GetChatServerRsp StatusGrpcClient::GetChatServer(int uid) {
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(3));
     GetChatServerRsp reply;
     GetChatServerReq request;
     request.set_uid(uid);
     auto stub = _pool->getConnection();
+    if (!stub) { reply.set_error(ErrorCodes::RPCFailed); return reply; }
     grpc::Status status = stub->GetChatServer(&context, request, &reply);
     Defer defer([&stub, this]() {
         _pool->returnConnection(std::move(stub));

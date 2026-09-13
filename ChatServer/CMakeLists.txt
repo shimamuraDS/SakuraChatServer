@@ -21,6 +21,7 @@ link_directories(${MYSQLCPP_ROOT}/lib64/debug/vs14)
 
 add_executable(ChatServer
         ChatServer.cpp
+        include/ExpiryWorker.h
         src/CServer.cpp
         include/CServer.h
         src/CSession.cpp

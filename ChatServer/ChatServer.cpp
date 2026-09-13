@@ -10,20 +10,26 @@
 #include "AsioIOServicePool.h"
 #include "ChatServiceImpl.h"
 #include "RedisMgr.h"
+#include "RpcSecurity.h"
+#include "ExpiryWorker.h"
 
 int main() {
     auto& cfg = ConfigMgr::Inst();
     auto server_name = cfg["SelfServer"]["Name"];
     try {
+        cfg.RequireDatabaseCredentials();
+        ExpiryWorker expiryWorker;
         auto pool = AsioIOServicePool::GetInstance();
         // 设置登录数为0
         RedisMgr::GetInstance()->HSet(std::string(LOGIN_COUNT), server_name, "0");
         std::string server_address(cfg["SelfServer"]["Host"] + ":" + cfg["SelfServer"]["RPCPort"]);
+        if (RpcSecurity::Development()) server_address = "127.0.0.1:" + cfg["SelfServer"]["RPCPort"];
         ChatServiceImpl service;
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+        builder.AddListeningPort(server_address, RpcSecurity::Server());
         builder.RegisterService(&service);
         std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
+        if (!server) throw std::runtime_error("Cannot start Chat RPC server");
         std::cout << "RPC Server listening on " << server_address << std::endl;
 
         std::thread grpc_server_thread([&server]() {

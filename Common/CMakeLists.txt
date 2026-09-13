@@ -228,6 +228,7 @@ add_library(Common STATIC
         src/AsioIOServicePool.cpp
         src/StatusGrpcClient.cpp
         src/MysqlDao.cpp
+        src/ChatPersistence.cpp
         src/RedisMgr.cpp
         include/message.grpc.pb.h
         include/message.pb.h
@@ -265,3 +266,11 @@ target_link_libraries(Common
 
 # ---- 编译选项 ----
 target_compile_features(Common PUBLIC cxx_std_17)
+
+# Override SODIUM_ROOT for another machine. Password KDF comes from libsodium.
+set(SODIUM_ROOT "D:/environment/Anaconda3/Library" CACHE PATH "libsodium installation")
+find_path(SODIUM_INCLUDE_DIR sodium.h HINTS "${SODIUM_ROOT}/include" REQUIRED)
+find_library(SODIUM_LIBRARY NAMES libsodium_static sodium_static HINTS "${SODIUM_ROOT}/lib" REQUIRED)
+target_include_directories(Common PUBLIC "${SODIUM_INCLUDE_DIR}")
+target_compile_definitions(Common PUBLIC SODIUM_STATIC)
+target_link_libraries(Common PUBLIC "${SODIUM_LIBRARY}" bcrypt)

@@ -19,7 +19,7 @@ public:
 private:
     std::atomic<bool> _b_stop;
     size_t _poolSize;
-    const char* _host;
+    std::string _host;
     int _port;
     std::queue<redisContext*> _connections;
     std::mutex _mutex;
@@ -32,6 +32,10 @@ public:
     ~RedisMgr();
     bool Get(const std::string& key, std::string& value);
     bool Set(const std::string& key, const std::string& value);
+    bool SetEx(const std::string& key, const std::string& value, int seconds);
+    bool ConsumeCode(const std::string& key, const std::string& code);
+    bool AllowRequest(const std::string& key, int limit, int seconds);
+    bool DeleteIfEqual(const std::string& key, const std::string& value);
     bool Auth(const std::string& password);
     bool LPush(const std::string& key, const std::string& value);
     bool LPop(const std::string& key, std::string& value);

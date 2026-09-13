@@ -4,3 +4,13 @@
 cmake-build-*/
 build/
 node_modules/
+.local-certs/
+*.key
+*.pfx
+*.p12
+.env
+.env.*
+!.env.example
+secrets/
+*.local.ini
+*.local.json

@@ -2,24 +2,28 @@ const config_module = require("./config")
 const Redis = require('ioredis');
 
 /**
- * ´´½¨ Redis ¿Í»§¶Ë
+ * åˆ›å»º Redis å®¢æˆ·ç«¯
  */
 const RedisCli = new Redis({
     host: config_module.redis_host,
     port: config_module.redis_port,
     password: config_module.redis_pass,
+    connectTimeout: 5000,
+    commandTimeout: 5000,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
 });
 
 /**
- * ¼àÌı´íÎóĞÅÏ¢
+ * ç›‘å¬é”™è¯¯ä¿¡æ¯
  */
 RedisCli.on("error", function (err) {
     console.log("RedisCli connect error");
-    RedisCli.quit();
+    // Let ioredis reconnect; commands fail promptly while disconnected.
 });
 
 /**
- * ¸ù¾İkey»ñÈ¡value
+ * æ ¹æ®keyè·å–value
  * @param {*} key
  * @returns
  */
@@ -30,16 +34,15 @@ async function GetRedis(key) {
             console.log('result:', '<' + result + '>', 'This key cannot be find...');
             return null
         }
-        console.log('Result:', '<' + result + '>', 'Get key success!...');
         return result
     } catch (error) {
-        console.log('GetRedis error is ', error);
+        console.error('Redis GET failed');
         return null
     }
 }
 
 /**
- * ¸ù¾İkey²éÑ¯redisÖĞÊÇ·ñ´æÔÚkey
+ * æ ¹æ®keyæŸ¥è¯¢redisä¸­æ˜¯å¦å­˜åœ¨key
  * @param {*} key
  * @returns
  */
@@ -50,16 +53,15 @@ async function QueryRedis(key) {
             console.log('result:', '<' + result + '>', 'This key cannot be find...');
             return null
         }
-        console.log('Result:', '<' + result + '>', 'Get key success!...');
         return result
     } catch (error) {
-        console.log('QueryRedis error is ', error);
+        console.error('Redis EXISTS failed');
         return null
     }
 }
 
 /**
- * ÉèÖÃkeyºÍvalue£¬²¢ÉèÖÃ¹ıÆÚÊ±¼ä
+ * è®¾ç½®keyå’Œvalueï¼Œå¹¶è®¾ç½®è¿‡æœŸæ—¶é—´
  * @param {*} key
  * @param {*} value
  * @param {*} exptime
@@ -67,20 +69,26 @@ async function QueryRedis(key) {
  */
 async function SetRedisExpire(key, value, exptime) {
     try {
-        await RedisCli.set(key, value)
-        await RedisCli.expire(key, exptime);
+        await RedisCli.set(key, value, 'EX', exptime)
         return true;
     } catch (error) {
-        console.log('SetRedisExpire error is ', error);
+        console.error('Redis SET failed');
         return false;
     }
 }
 
 /**
- * ÍË³öº¯Êı
+ * é€€å‡ºå‡½æ•°
  */
 function Quit() {
     RedisCli.quit();
 }
 
-module.exports = { GetRedis, QueryRedis, Quit, SetRedisExpire }
+async function ReserveCode(key, code) {
+    const script = "if redis.call('EXISTS',KEYS[2])==1 then return 0 end; " +
+        "local n=redis.call('INCR',KEYS[3]); if n==1 then redis.call('EXPIRE',KEYS[3],60) end; " +
+        "if n>100 then return 0 end; redis.call('SET',KEYS[2],'1','EX',60); " +
+        "redis.call('SET',KEYS[1],ARGV[1],'EX',180); redis.call('DEL',KEYS[4]); return 1";
+    return await RedisCli.eval(script, 4, key, key + ':cooldown', 'limit:mail:global', key + ':attempts', code) === 1;
+}
+module.exports = { GetRedis, QueryRedis, Quit, SetRedisExpire, ReserveCode }

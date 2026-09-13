@@ -4,6 +4,8 @@
 
 #include "StatusServiceImpl.h"
 #include "ConfigMgr.h"
+#include "PasswordSecurity.h"
+#include "RpcSecurity.h"
 #include "RedisMgr.h"
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -42,25 +44,31 @@ StatusServiceImpl::StatusServiceImpl() {
     }
 }
 
-void StatusServiceImpl::insertToken(int uid, std::string token) {
+bool StatusServiceImpl::insertToken(int uid, std::string token) {
     std::string uid_str = std::to_string(uid);
     std::string token_key = std::string(USERTOKENPREFIX) + uid_str;
-    RedisMgr::GetInstance()->Set(token_key, token);
+    return RedisMgr::GetInstance()->SetEx(token_key, PasswordSecurity::Digest(token), 12 * 60 * 60);
 }
 
 Status StatusServiceImpl::GetChatServer(ServerContext* context, const GetChatServerReq* request,
                                         GetChatServerRsp* reply) {
+    if (!RpcSecurity::Allowed(context, "sakura-gate")) return Status(grpc::StatusCode::PERMISSION_DENIED, "Service identity required");
     std::string prefix("sakura status server has received : ");
     const auto& server = getChatServer();
     reply->set_host(server.host);
     reply->set_port(server.port);
     reply->set_error(ErrorCodes::Success);
-    reply->set_token(generate_unique_string());
-    insertToken(request->uid(), reply->token());
+    if (request->uid() <= 0) return Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid account");
+    reply->set_token(PasswordSecurity::Token());
+    if (!insertToken(request->uid(), reply->token())) {
+        reply->clear_token();
+        reply->set_error(ErrorCodes::RPCFailed);
+    }
     return Status::OK;
 }
 
 Status StatusServiceImpl::Login(ServerContext* context, const LoginReq* request, LoginRsp* reply) {
+    if (!RpcSecurity::Allowed(context, "sakura-chat")) return Status(grpc::StatusCode::PERMISSION_DENIED, "Service identity required");
     auto uid = request->uid();
     auto token = request->token();
     // std::lock_guard<std::mutex> guard(_token_mtx);
@@ -81,7 +89,7 @@ Status StatusServiceImpl::Login(ServerContext* context, const LoginReq* request,
         reply->set_error(ErrorCodes::UidInvalid);
         return Status::OK;
     }
-    if (token_value != token) {
+    if (token_value != PasswordSecurity::Digest(token)) {
         reply->set_error(ErrorCodes::TokenInvalid);
         return Status::OK;
     }

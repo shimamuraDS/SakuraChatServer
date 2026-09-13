@@ -6,6 +6,8 @@
 #define DATA_H
 
 #include <string>
+#include <cstdint>
+#include <vector>
 
 struct UserInfo {
     UserInfo():name(""), pwd(""),uid(0),email(""),nick(""),desc(""),gender(0), icon(""), back("") {}

@@ -6,11 +6,13 @@
 
 #include "ChatWire.h"
 #include "MysqlMgr.h"
+#include "RpcSecurity.h"
 
 ChatServiceImpl::ChatServiceImpl() {
 }
 
-grpc::Status ChatServiceImpl::NotifyAddFriend(grpc::ServerContext *, const message::AddFriendReq *request, message::AddFriendRsp *response) {
+grpc::Status ChatServiceImpl::NotifyAddFriend(grpc::ServerContext *context, const message::AddFriendReq *request, message::AddFriendRsp *response) {
+    if (!RpcSecurity::Allowed(context, "sakura-chat")) return grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Service identity required");
     response->set_applyuid(request->applyuid());
     response->set_touid(request->touid());
     response->set_error(ErrorCodes::Success);
@@ -29,13 +31,18 @@ grpc::Status ChatServiceImpl::NotifyAddFriend(grpc::ServerContext *, const messa
     notify["icon"] = request->icon();
     notify["gender"] = request->gender();
     notify["message"] = request->desc();
+    if (!MysqlMgr::GetInstance()->PrivacyAllows(request->touid(), request->applyuid(), "request_policy")) return grpc::Status::OK;
+    if (!MysqlMgr::GetInstance()->PrivacyAllows(request->applyuid(), request->touid(), "profile_policy")) {
+        notify["icon"] = ""; notify["nick"] = ""; notify["gender"] = 0; notify["desc"] = "";
+    }
 
     targetSession->Send(notify.toStyledString(), ID_NOTIFY_ADD_FRIEND_REQ);
     return grpc::Status::OK;
 }
 
-grpc::Status ChatServiceImpl::NotifyAuthFriend(grpc::ServerContext *, const message::AuthFriendReq *request,
+grpc::Status ChatServiceImpl::NotifyAuthFriend(grpc::ServerContext *context, const message::AuthFriendReq *request,
     message::AuthFriendRsp *response) {
+    if (!RpcSecurity::Allowed(context, "sakura-chat")) return grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Service identity required");
     response->set_error(ErrorCodes::Success);
     response->set_fromuid(request->fromuid());
     response->set_touid(request->touid());
@@ -56,9 +63,10 @@ grpc::Status ChatServiceImpl::NotifyAuthFriend(grpc::ServerContext *, const mess
     return grpc::Status::OK;
 }
 
-grpc::Status ChatServiceImpl::NotifyTextChatMsg( grpc::ServerContext *, const message::TextChatMsgReq *request,
+grpc::Status ChatServiceImpl::NotifyTextChatMsg( grpc::ServerContext *context, const message::TextChatMsgReq *request,
     message::TextChatMsgRsp *response)
 {
+    if (!RpcSecurity::Allowed(context, "sakura-chat")) return grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Service identity required");
     response->set_error(ErrorCodes::ChatDataInvalid);
     response->set_fromuid(request->fromuid());
     response->set_touid(request->touid());
@@ -66,6 +74,7 @@ grpc::Status ChatServiceImpl::NotifyTextChatMsg( grpc::ServerContext *, const me
         request->fromuid() == request->touid() || request->textmsgs_size() != 1)
         return grpc::Status::OK;
     const auto &text = request->textmsgs(0);
+    if (!MysqlMgr::GetInstance()->PrivacyAllows(request->touid(), request->fromuid(), "message")) return grpc::Status::OK;
     if (!ChatWire::Text(text.msgid(), text.msgcontent()))
         return grpc::Status::OK;
     if (!MysqlMgr::GetInstance()->FriendExists(request->fromuid(), request->touid())) {
@@ -77,8 +86,17 @@ grpc::Status ChatServiceImpl::NotifyTextChatMsg( grpc::ServerContext *, const me
         response->set_error(ErrorCodes::ChatTargetOffline);
         return grpc::Status::OK;
     }
-    const auto wire = ChatWire::Compact(ChatWire::Notification(
-        request->fromuid(), request->touid(), text.msgid(), text.msgcontent()));
+    const auto stored = MysqlMgr::GetInstance()->StoredText(request->fromuid(), text.msgid());
+    if (stored["error"].asInt() != 0 || !stored["message"].isObject() ||
+        stored["message"]["touid"].asInt() != request->touid() ||
+        stored["message"]["content"].asString() != text.msgcontent()) {
+        response->set_error(ErrorCodes::ChatDatabaseFailed);
+        return grpc::Status::OK;
+    }
+    Json::Value notification;
+    notification["error"] = 0;
+    notification["message"] = stored["message"];
+    const auto wire = ChatWire::Compact(notification);
     if (wire.size() > ChatWire::BodyLimit) return grpc::Status::OK;
     target->Send(wire, ID_NOTIFY_TEXT_CHAT_MSG_REQ);
     response->set_error(ErrorCodes::Success);

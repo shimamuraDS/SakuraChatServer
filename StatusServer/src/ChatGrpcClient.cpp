@@ -4,12 +4,13 @@
 
 #include "ChatGrpcClient.h"
 #include "ConfigMgr.h"
+#include "RpcSecurity.h"
 #include <grpcpp/grpcpp.h>
 
 ChatConPool::ChatConPool(size_t poolSize, std::string host, std::string port):
     _poolSize(poolSize), _host(host), _port(port), _b_stop(false) {
     for (size_t i = 0; i < _poolSize; i++) {
-        std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(host + ":" + port, grpc::InsecureChannelCredentials());
+        std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(host + ":" + port, RpcSecurity::Channel(host));
         _connections.push(message::ChatService::NewStub(channel));
     }
 }

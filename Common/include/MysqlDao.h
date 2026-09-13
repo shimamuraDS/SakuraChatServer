@@ -54,6 +54,17 @@ public:
     std::vector<PendingFriendApplyInfo> GetPendingFriendApplies(int toUid, std::int64_t afterId, int limit);
     ResolveFriendApplyResult ResolveFriendApply(std::int64_t applyId, int actorUid, bool agree);
     FriendPageResult GetFriendPage(int selfUid, int afterUid, int limit);
+    Json::Value StoreTextMessage(int sender, int receiver, const std::string &id, const std::string &text);
+    Json::Value StoredText(int sender, const std::string &id);
+    Json::Value ChatHistory(int actor, int peer, std::uint64_t afterSeq);
+    Json::Value ChatConversations(int actor, std::uint64_t afterThread);
+    Json::Value RecordReceipt(int actor, std::uint64_t messageId, bool read);
+    Json::Value MessageStates(int actor, const std::vector<std::string> &ids);
+    Json::Value DeleteMessage(int actor, std::uint64_t messageId, bool forEveryone);
+    Json::Value DeletionEvents(int actor, std::uint64_t afterEvent);
+    bool ExpireMessages();
+    Json::Value PrivacyCommand(int actor, const Json::Value &request);
+    bool PrivacyAllows(int owner, int actor, const std::string &action);
 private:
     std::unique_ptr<MySqlPool> _pool;
 };

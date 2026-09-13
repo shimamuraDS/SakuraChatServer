@@ -16,6 +16,7 @@ namespace ChatWire {
     inline std::string Compact(const Json::Value &value) {
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "";
+        builder["emitUTF8"] = true;
         return Json::writeString(builder, value);
     }
 
