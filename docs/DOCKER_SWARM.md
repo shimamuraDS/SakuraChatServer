@@ -73,6 +73,16 @@ chmod 600 /etc/sakura/deploy.env
 
 不能把当前测试版的“HTTPS + 明文 TCP”配置直接用于这个部署。客户端必须启用生产 TLS，网关设为 `https://chat.example.com`；状态服务将返回同一域名的 8090/8091。
 
+若还没有证书，先将域名 A 记录指向服务器；在端口 80 未被占用时，可用 Certbot 的 HTTP 验证申请：
+
+```bash
+apt-get install -y certbot
+# 云安全组/防火墙暂时允许 80/tcp，且 DNS 已正确解析。
+certbot certonly --standalone -d chat.example.com
+```
+
+若 80 已被其他服务占用，不要盲目停止现有业务，改用对应 DNS 服务商的 DNS 验证方式。Standalone 后续续期同样需要 80 可达；无论采用哪种验证方式，都必须将续期证书更新到 Swarm secrets，不能只依赖 Certbot 更新磁盘文件。
+
 编辑 `/etc/sakura/deploy.env`：填写 `SAKURA_PUBLIC_HOST`、SMTP 主机及 CI Summary 给出的两个完整镜像摘要；不要保留 `REPLACE`。不要写入密码。
 `SAKURA_PROXY_SUBNET` 默认 `10.72.20.0/24`，若与服务器已有网络冲突，改为未占用的私有 IPv4 /24；这个变量同时配置 Docker 子网与 Gate 信任范围，不要扩大为全网。
 
