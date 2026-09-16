@@ -3,8 +3,9 @@
 //
 
 #include "CServer.h"
+#include "ListenAddress.h"
 
-CServer::CServer(boost::asio::io_context& io_context, short port) : _io_context(io_context), _port(port), _acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address("127.0.0.1"), port)) {
+CServer::CServer(boost::asio::io_context& io_context, short port) : _io_context(io_context), _port(port), _acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address(ListenHost("127.0.0.1")), port)) {
     std::cout << "Server start success, listen on port: " << _port << std::endl;
     StartAccept();
 }

@@ -6,9 +6,15 @@
 #define MYSQLDAO_H
 
 #include "const.h"
+#if __has_include(<jdbc/mysql_driver.h>)
 #include <jdbc/mysql_driver.h>
 #include <jdbc/cppconn/statement.h>
 #include <jdbc/cppconn/prepared_statement.h>
+#else
+#include <mysql_driver.h>
+#include <cppconn/statement.h>
+#include <cppconn/prepared_statement.h>
+#endif
 #include "data.h"
 
 class SqlConnection {

@@ -1,0 +1,14 @@
+**/.git
+**/node_modules
+**/cmake-build-*
+**/build
+**/config.ini
+**/config.json
+**/.env*
+**/secrets
+**/.local-certs
+**/*.key
+**/*.pem
+**/*.pfx
+**/*.p12
+**/.idea

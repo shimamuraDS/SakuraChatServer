@@ -1,0 +1,178 @@
+version: "3.8"
+
+x-env: &env
+  SAKURA_SECURITY_MODE: production
+  SAKURA_LISTEN_ADDRESS: 0.0.0.0
+  SAKURA_PUBLIC_HOST: ${SAKURA_PUBLIC_HOST}
+  SAKURA_REDIS_PASSWORD_FILE: /run/secrets/redis_password
+  SAKURA_RPC_CA: /run/secrets/rpc_ca
+  SAKURA_RPC_CERT: /run/secrets/rpc_cert
+  SAKURA_RPC_KEY: /run/secrets/rpc_key
+x-db-env: &db-env
+  SAKURA_MYSQL_USER: sakura
+  SAKURA_MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+x-deploy: &deploy
+  replicas: 1
+  restart_policy: {condition: on-failure, delay: 5s}
+  update_config: {parallelism: 1, delay: 10s, monitor: 60s, failure_action: rollback, order: start-first}
+  rollback_config: {parallelism: 1, monitor: 30s, order: stop-first}
+  placement: {constraints: [node.role == manager]}
+x-service: &service
+  networks: [backend]
+  stop_grace_period: 30s
+  logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+
+services:
+  gate:
+    <<: *service
+    image: ${SERVER_IMAGE}
+    environment:
+      <<: [*env, *db-env]
+      SAKURA_ROLE: gate
+      SAKURA_VERIFY_SERVICE_KEY_FILE: /run/secrets/verify_key
+    secrets:
+      - redis_password
+      - mysql_password
+      - verify_key
+      - rpc_ca
+      - {source: gate_cert, target: rpc_cert}
+      - {source: gate_key, target: rpc_key}
+    deploy:
+      <<: *deploy
+      replicas: 2
+      labels: {io.sakura.autoupdate: server}
+  status:
+    <<: *service
+    image: ${SERVER_IMAGE}
+    environment:
+      <<: *env
+      SAKURA_ROLE: status
+    secrets:
+      - redis_password
+      - rpc_ca
+      - {source: status_cert, target: rpc_cert}
+      - {source: status_key, target: rpc_key}
+    deploy:
+      <<: *deploy
+      labels: {io.sakura.autoupdate: server}
+  chat1:
+    <<: *service
+    image: ${SERVER_IMAGE}
+    environment:
+      <<: [*env, *db-env]
+      SAKURA_ROLE: chat1
+    secrets:
+      - redis_password
+      - mysql_password
+      - rpc_ca
+      - {source: chat1_cert, target: rpc_cert}
+      - {source: chat1_key, target: rpc_key}
+    deploy:
+      <<: *deploy
+      labels: {io.sakura.autoupdate: server}
+      update_config: {parallelism: 1, delay: 10s, monitor: 60s, failure_action: rollback, order: stop-first}
+  chat2:
+    <<: *service
+    image: ${SERVER_IMAGE}
+    environment:
+      <<: [*env, *db-env]
+      SAKURA_ROLE: chat2
+    secrets:
+      - redis_password
+      - mysql_password
+      - rpc_ca
+      - {source: chat2_cert, target: rpc_cert}
+      - {source: chat2_key, target: rpc_key}
+    deploy:
+      <<: *deploy
+      labels: {io.sakura.autoupdate: server}
+      update_config: {parallelism: 1, delay: 10s, monitor: 60s, failure_action: rollback, order: stop-first}
+  verify:
+    <<: *service
+    image: ${VERIFY_IMAGE}
+    environment:
+      <<: *env
+      SAKURA_ROLE: verify
+      SAKURA_VERIFY_SERVICE_KEY_FILE: /run/secrets/verify_key
+      SAKURA_SMTP_USER_FILE: /run/secrets/smtp_user
+      SAKURA_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      SAKURA_SMTP_HOST: ${SAKURA_SMTP_HOST}
+    secrets:
+      - redis_password
+      - verify_key
+      - smtp_user
+      - smtp_password
+      - rpc_ca
+      - {source: verify_cert, target: rpc_cert}
+      - {source: verify_key_tls, target: rpc_key}
+    deploy:
+      <<: *deploy
+      labels: {io.sakura.autoupdate: verify}
+  edge:
+    <<: *service
+    image: nginx:1.28-alpine
+    configs:
+      - {source: nginx, target: /etc/nginx/nginx.conf}
+    secrets: [public_cert, public_key]
+    ports:
+      - {target: 443, published: 443, protocol: tcp, mode: ingress}
+      - {target: 8090, published: 8090, protocol: tcp, mode: ingress}
+      - {target: 8091, published: 8091, protocol: tcp, mode: ingress}
+    healthcheck:
+      test: [CMD-SHELL, "nc -z 127.0.0.1 443 && nc -z 127.0.0.1 8090 && nc -z 127.0.0.1 8091"]
+      interval: 30s
+      retries: 3
+    deploy: *deploy
+  mysql:
+    <<: *service
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: skrchat
+      MYSQL_USER: sakura
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+    secrets: [mysql_password, mysql_root_password]
+    volumes: [mysql_data:/var/lib/mysql]
+    deploy:
+      <<: *deploy
+      update_config: {parallelism: 1, order: stop-first, failure_action: pause}
+  redis:
+    <<: *service
+    image: redis:7.4-alpine
+    command: [sh, /usr/local/bin/sakura-redis.sh]
+    configs:
+      - {source: redis_start, target: /usr/local/bin/sakura-redis.sh}
+    secrets: [redis_password]
+    volumes: [redis_data:/data]
+    deploy:
+      <<: *deploy
+      update_config: {parallelism: 1, order: stop-first, failure_action: pause}
+
+networks:
+  backend: {driver: overlay}
+volumes:
+  mysql_data: {external: true, name: sakura_mysql}
+  redis_data: {external: true, name: sakura_redis}
+configs:
+  nginx: {file: ./nginx.conf}
+  redis_start: {file: ./redis-start.sh}
+secrets:
+  redis_password: {external: true, name: sakura_redis_password_v1}
+  mysql_password: {external: true, name: sakura_mysql_password_v1}
+  mysql_root_password: {external: true, name: sakura_mysql_root_password_v1}
+  verify_key: {external: true, name: sakura_verify_key_v1}
+  smtp_user: {external: true, name: sakura_smtp_user_v1}
+  smtp_password: {external: true, name: sakura_smtp_password_v1}
+  rpc_ca: {external: true, name: sakura_rpc_ca_v1}
+  gate_cert: {external: true, name: sakura_gate_cert_v1}
+  gate_key: {external: true, name: sakura_gate_key_v1}
+  status_cert: {external: true, name: sakura_status_cert_v1}
+  status_key: {external: true, name: sakura_status_key_v1}
+  chat1_cert: {external: true, name: sakura_chat1_cert_v1}
+  chat1_key: {external: true, name: sakura_chat1_key_v1}
+  chat2_cert: {external: true, name: sakura_chat2_cert_v1}
+  chat2_key: {external: true, name: sakura_chat2_key_v1}
+  verify_cert: {external: true, name: sakura_verify_cert_v1}
+  verify_key_tls: {external: true, name: sakura_verify_key_tls_v1}
+  public_cert: {external: true, name: sakura_public_cert_v1}
+  public_key: {external: true, name: sakura_public_key_v1}

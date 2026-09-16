@@ -3,6 +3,7 @@
 
 #include "ConfigMgr.h"
 #include "RpcSecurity.h"
+#include "ListenAddress.h"
 
 //
 // Created by adachi on 25-11-25.
@@ -10,7 +11,7 @@
 void RunServer() {
     auto& cfg = ConfigMgr::Inst();
 
-    std::string server_address(cfg["StatusServer"]["Host"] + ":" + cfg["StatusServer"]["Port"]);
+    std::string server_address(ListenHost(cfg["StatusServer"]["Host"]) + ":" + cfg["StatusServer"]["Port"]);
     if (RpcSecurity::Development()) server_address = "127.0.0.1:" + cfg["StatusServer"]["Port"];
     StatusServiceImpl service;
 

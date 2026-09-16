@@ -55,6 +55,10 @@ Status StatusServiceImpl::GetChatServer(ServerContext* context, const GetChatSer
     if (!RpcSecurity::Allowed(context, "sakura-gate")) return Status(grpc::StatusCode::PERMISSION_DENIED, "Service identity required");
     std::string prefix("sakura status server has received : ");
     const auto& server = getChatServer();
+    if (server.name.empty()) {
+        reply->set_error(ErrorCodes::RPCFailed);
+        return Status::OK;
+    }
     reply->set_host(server.host);
     reply->set_port(server.port);
     reply->set_error(ErrorCodes::Success);
@@ -102,23 +106,17 @@ Status StatusServiceImpl::Login(ServerContext* context, const LoginReq* request,
 
 ChatServer StatusServiceImpl::getChatServer() {
     std::lock_guard<std::mutex> guard(_server_mtx);
-    auto minServer = _servers.begin()->second;
-    auto count_str = RedisMgr::GetInstance()->HGet(std::string(LOGIN_COUNT), minServer.name);
-    if (count_str.empty()) {
-        minServer.con_count = 0;
-    } else {
-        minServer.con_count = std::stoi(count_str);
-    }
+    ChatServer minServer{};
+    minServer.con_count = INT_MAX;
     for (auto& server : _servers) {
-        if (server.second.name == minServer.name) {
-            continue;
-        }
         auto count_str = RedisMgr::GetInstance()->HGet(std::string(LOGIN_COUNT), server.second.name);
-        if (count_str.empty()) {
-            server.second.con_count = INT_MAX;
-        } else {
-            server.second.con_count = std::stoi(count_str);
-        }
+        // A stopped node removes its registration; do not route logins to it.
+        if (count_str.empty()) continue;
+        try {
+            size_t consumed = 0;
+            server.second.con_count = std::stoi(count_str, &consumed);
+            if (consumed != count_str.size() || server.second.con_count < 0) continue;
+        } catch (const std::exception&) { continue; }
         if (server.second.con_count < minServer.con_count) {
             minServer = server.second;
         }

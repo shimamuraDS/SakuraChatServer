@@ -1,0 +1,12 @@
+FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends python3 tini ca-certificates \
+    && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --no-create-home sakura
+WORKDIR /opt/sakura/verify
+COPY VarifyServer/package.json VarifyServer/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY VarifyServer/*.js VarifyServer/message.proto ./
+COPY deploy/docker/entrypoint.py deploy/docker/health.py /opt/sakura/
+USER 10001:10001
+ENV SAKURA_SECURITY_MODE=production SAKURA_ROLE=verify
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD ["python3", "/opt/sakura/health.py"]
+ENTRYPOINT ["/usr/bin/tini", "--", "python3", "/opt/sakura/entrypoint.py"]

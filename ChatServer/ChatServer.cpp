@@ -12,6 +12,7 @@
 #include "RedisMgr.h"
 #include "RpcSecurity.h"
 #include "ExpiryWorker.h"
+#include "ListenAddress.h"
 
 int main() {
     auto& cfg = ConfigMgr::Inst();
@@ -22,7 +23,7 @@ int main() {
         auto pool = AsioIOServicePool::GetInstance();
         // 设置登录数为0
         RedisMgr::GetInstance()->HSet(std::string(LOGIN_COUNT), server_name, "0");
-        std::string server_address(cfg["SelfServer"]["Host"] + ":" + cfg["SelfServer"]["RPCPort"]);
+        std::string server_address(ListenHost(cfg["SelfServer"]["Host"]) + ":" + cfg["SelfServer"]["RPCPort"]);
         if (RpcSecurity::Development()) server_address = "127.0.0.1:" + cfg["SelfServer"]["RPCPort"];
         ChatServiceImpl service;
         grpc::ServerBuilder builder;
@@ -52,5 +53,6 @@ int main() {
         grpc_server_thread.join();
     } catch (std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;
+        return EXIT_FAILURE;
     }
 }

@@ -17,6 +17,11 @@ bool field(const Json::Value &r, const char *name, size_t max) {
 void LogicSystem::RegGet(std::string url, HttpHandler handler) { _get_handlers.emplace(std::move(url), std::move(handler)); }
 void LogicSystem::RegPost(std::string url, HttpHandler handler) { _post_handlers.emplace(std::move(url), std::move(handler)); }
 LogicSystem::LogicSystem() {
+    RegGet("/healthz", [](std::shared_ptr<HttpConnection> connection) {
+        connection->_response.set(http::field::content_type, "application/json");
+        connection->_response.set(http::field::cache_control, "no-store");
+        beast::ostream(connection->_response.body()) << "{\"status\":\"alive\"}";
+    });
     RegPost("/private/v1", [](std::shared_ptr<HttpConnection> connection) {
         boost::system::error_code ec;
         const auto remote = connection->_socket.remote_endpoint(ec);
