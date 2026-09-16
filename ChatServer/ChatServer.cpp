@@ -21,8 +21,6 @@ int main() {
         cfg.RequireDatabaseCredentials();
         ExpiryWorker expiryWorker;
         auto pool = AsioIOServicePool::GetInstance();
-        // 设置登录数为0
-        RedisMgr::GetInstance()->HSet(std::string(LOGIN_COUNT), server_name, "0");
         std::string server_address(ListenHost(cfg["SelfServer"]["Host"]) + ":" + cfg["SelfServer"]["RPCPort"]);
         if (RpcSecurity::Development()) server_address = "127.0.0.1:" + cfg["SelfServer"]["RPCPort"];
         ChatServiceImpl service;
@@ -33,19 +31,19 @@ int main() {
         if (!server) throw std::runtime_error("Cannot start Chat RPC server");
         std::cout << "RPC Server listening on " << server_address << std::endl;
 
-        std::thread grpc_server_thread([&server]() {
-            server->Wait();
-        });
-
         boost::asio::io_context io_context;
         boost::asio::signal_set signals(io_context, SIGINT, SIGTERM);
-        signals.async_wait([&io_context, pool, &server](auto, auto) {
+        signals.async_wait([&io_context, pool, &server, &server_name](auto, auto) {
+            RedisMgr::GetInstance()->HDel(std::string(LOGIN_COUNT), server_name);
             io_context.stop();
             pool->Stop();
             server->Shutdown();
         });
         auto port_str = cfg["SelfServer"]["Port"];
         CServer s(io_context, atoi(port_str.c_str()));
+        if (!RedisMgr::GetInstance()->HSet(std::string(LOGIN_COUNT), server_name, "0"))
+            throw std::runtime_error("Cannot register ChatServer");
+        std::thread grpc_server_thread([&server]() { server->Wait(); });
         io_context.run();
 
         RedisMgr::GetInstance()->HDel(std::string(LOGIN_COUNT), server_name);

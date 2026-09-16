@@ -47,5 +47,10 @@ function main() {
     }
     const bind = production ? (process.env.SAKURA_VERIFY_BIND || '127.0.0.1:50051') : '127.0.0.1:50051'
     server.bindAsync(bind, credentials, error => { if (error) throw error; console.log('Verification service ready') })
+    process.once('SIGTERM', () => {
+        const timeout = setTimeout(() => { server.forceShutdown(); process.exit(1) }, 10000)
+        timeout.unref()
+        server.tryShutdown(() => { clearTimeout(timeout); process.exit(0) })
+    })
 }
 main()

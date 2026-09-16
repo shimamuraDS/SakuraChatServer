@@ -25,6 +25,7 @@ private:
     std::vector<WorkPtr> _works;
     std::vector<std::thread> _threads;
     std::size_t _nextIOService;
+    std::once_flag _stopOnce;
 };
 
 

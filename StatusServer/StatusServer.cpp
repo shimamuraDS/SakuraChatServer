@@ -40,10 +40,11 @@ void RunServer() {
     });
 
     // 在单独的线程中运行io_context
-    std::thread([&io_context]() { io_context.run(); }).detach();
+    std::thread signal_thread([&io_context]() { io_context.run(); });
 
     // 等待服务器关闭
     server->Wait();
+    signal_thread.join();
 }
 
 int main(int argc, char** argv) {

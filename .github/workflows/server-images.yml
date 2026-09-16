@@ -40,6 +40,7 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile
           platforms: linux/amd64
+          load: true
           push: ${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' }}
           tags: ${{ steps.names.outputs.prefix }}-server:sha-${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -52,11 +53,17 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile.verify
           platforms: linux/amd64
+          load: true
           push: ${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' }}
           tags: ${{ steps.names.outputs.prefix }}-verify:sha-${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=verify
           cache-to: type=gha,mode=max,scope=verify
+      - name: Single-node Swarm smoke test
+        env:
+          SERVER_IMAGE: ${{ steps.names.outputs.prefix }}-server:sha-${{ github.sha }}
+          VERIFY_IMAGE: ${{ steps.names.outputs.prefix }}-verify:sha-${{ github.sha }}
+        run: bash deploy/tests/swarm-smoke.sh
       - name: Prepare atomic release manifest
         if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
         env:

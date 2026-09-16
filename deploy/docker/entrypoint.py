@@ -3,6 +3,8 @@ import configparser
 import os
 from pathlib import Path
 import re
+import socket
+import time
 
 
 def configuration(role, host):
@@ -57,6 +59,20 @@ def main():
         else:
             cfg.write(stream)
     os.environ["SAKURA_CONFIG_PATH"] = path
+    # Swarm does not wait for dependencies; avoid constructing empty connection pools.
+    dependencies = [("redis", 6379)]
+    if role in {"gate", "chat1", "chat2"}:
+        dependencies.append(("mysql", 3306))
+    for host, port in dependencies:
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                with socket.create_connection((host, port), timeout=3):
+                    break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Dependency unavailable: " + host) from None
+                time.sleep(2)
     if role == "verify":
         os.environ["SAKURA_REDIS_HOST"] = "redis"
         os.environ["SAKURA_VERIFY_BIND"] = "0.0.0.0:50051"
