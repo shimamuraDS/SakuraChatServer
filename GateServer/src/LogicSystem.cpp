@@ -11,13 +11,13 @@
 #include "ClientAddress.h"
 
 namespace {
-std::string clientAddress(const std::shared_ptr<HttpConnection>& connection) {
+std::string clientAddress(tcp::socket& socket, beast::string_view forwarded) {
     boost::system::error_code error;
-    const auto peer = connection->_socket.remote_endpoint(error);
+    const auto peer = socket.remote_endpoint(error);
     if (error) return {};
     const char* trusted = std::getenv("SAKURA_TRUSTED_PROXY_CIDR");
     return ClientAddress(peer.address().to_string(),
-        std::string(connection->_request["X-Real-IP"]), trusted ? trusted : "");
+        std::string(forwarded), trusted ? trusted : "");
 }
 bool field(const Json::Value &r, const char *name, size_t max) {
     return r[name].isString() && !r[name].asString().empty() && r[name].asString().size() <= max &&
@@ -34,7 +34,7 @@ LogicSystem::LogicSystem() {
     });
     RegPost("/private/v1", [](std::shared_ptr<HttpConnection> connection) {
         auto result = PrivateChatHttp::Handle(beast::buffers_to_string(connection->_request.body().data()),
-                                              clientAddress(connection));
+                                              clientAddress(connection->_socket, connection->_request["X-Real-IP"]));
         connection->_response.set(http::field::content_type, "application/json; charset=utf-8");
         connection->_response.set(http::field::cache_control, "no-store");
         Json::StreamWriterBuilder writer; writer["indentation"] = "";
@@ -56,7 +56,7 @@ LogicSystem::LogicSystem() {
                 std::string email = request["email"].asString();
                 if (email.find('@') == std::string::npos ||
                     !std::all_of(email.begin(), email.end(), [](unsigned char c) { return c > 32 && c < 127; })) return;
-                const auto remote = clientAddress(connection);
+                const auto remote = clientAddress(connection->_socket, connection->_request["X-Real-IP"]);
                 if (remote.empty()) return;
                 auto redis = RedisMgr::GetInstance();
                 if (!redis->AllowRequest("limit:gate:global", 200, 60) ||

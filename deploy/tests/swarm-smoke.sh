@@ -7,10 +7,15 @@ test "$(docker info --format '{{.Swarm.LocalNodeState}}')" = inactive
 test -z "$(docker volume ls --format '{{.Name}}' | grep -E '^sakura_(mysql|redis)$' || true)"
 repo=$(pwd)
 temporary=$(mktemp -d)
-trap 'docker stack services sakura || true; docker service logs --tail 60 sakura_gate || true; docker service logs --tail 60 sakura_chat1 || true' EXIT
+trap 'docker stack services sakura || true; docker service ps --no-trunc sakura_edge || true; docker service logs --tail 30 sakura_edge || true; docker service logs --tail 30 sakura_gate || true; docker service logs --tail 30 sakura_chat1 || true' EXIT
 openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=localhost \
   -addext subjectAltName=DNS:localhost -keyout "$temporary/public.key" -out "$temporary/public.crt" 2>/dev/null
-docker swarm init
+docker run --rm --entrypoint nginx \
+  --mount "type=bind,src=$repo/deploy/swarm/nginx.conf,target=/etc/nginx/nginx.conf,readonly" \
+  --mount "type=bind,src=$temporary/public.crt,target=/run/secrets/public_cert,readonly" \
+  --mount "type=bind,src=$temporary/public.key,target=/run/secrets/public_key,readonly" \
+  nginx:1.28-alpine -t
+docker swarm init >/dev/null
 printf 'smoke@example.invalid\nci-only-unused-smtp-password\n' | python3 deploy/swarm/init-secrets.py \
   --public-host localhost --public-cert "$temporary/public.crt" --public-key "$temporary/public.key" \
   --directory "$temporary/secrets"
