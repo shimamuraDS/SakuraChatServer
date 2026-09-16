@@ -15,6 +15,7 @@ concurrency:
 jobs:
   images:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -60,6 +61,7 @@ jobs:
           cache-from: type=gha,scope=verify
           cache-to: type=gha,mode=max,scope=verify
       - name: Single-node Swarm smoke test
+        timeout-minutes: 12
         env:
           SERVER_IMAGE: ${{ steps.names.outputs.prefix }}-server:sha-${{ github.sha }}
           VERIFY_IMAGE: ${{ steps.names.outputs.prefix }}-verify:sha-${{ github.sha }}
