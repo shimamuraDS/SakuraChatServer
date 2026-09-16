@@ -7,8 +7,18 @@
 #include "PasswordSecurity.h"
 #include "PrivateChatHttp.h"
 #include <algorithm>
+#include <cstdlib>
+#include "ClientAddress.h"
 
 namespace {
+std::string clientAddress(const std::shared_ptr<HttpConnection>& connection) {
+    boost::system::error_code error;
+    const auto peer = connection->_socket.remote_endpoint(error);
+    if (error) return {};
+    const char* trusted = std::getenv("SAKURA_TRUSTED_PROXY_CIDR");
+    return ClientAddress(peer.address().to_string(),
+        std::string(connection->_request["X-Real-IP"]), trusted ? trusted : "");
+}
 bool field(const Json::Value &r, const char *name, size_t max) {
     return r[name].isString() && !r[name].asString().empty() && r[name].asString().size() <= max &&
            r[name].asString().find('\0') == std::string::npos;
@@ -23,10 +33,8 @@ LogicSystem::LogicSystem() {
         beast::ostream(connection->_response.body()) << "{\"status\":\"alive\"}";
     });
     RegPost("/private/v1", [](std::shared_ptr<HttpConnection> connection) {
-        boost::system::error_code ec;
-        const auto remote = connection->_socket.remote_endpoint(ec);
         auto result = PrivateChatHttp::Handle(beast::buffers_to_string(connection->_request.body().data()),
-                                              ec ? std::string() : remote.address().to_string());
+                                              clientAddress(connection));
         connection->_response.set(http::field::content_type, "application/json; charset=utf-8");
         connection->_response.set(http::field::cache_control, "no-store");
         Json::StreamWriterBuilder writer; writer["indentation"] = "";
@@ -48,13 +56,11 @@ LogicSystem::LogicSystem() {
                 std::string email = request["email"].asString();
                 if (email.find('@') == std::string::npos ||
                     !std::all_of(email.begin(), email.end(), [](unsigned char c) { return c > 32 && c < 127; })) return;
-                boost::system::error_code ec;
-                const auto remote = connection->_socket.remote_endpoint(ec);
-                if (ec) return;
+                const auto remote = clientAddress(connection);
+                if (remote.empty()) return;
                 auto redis = RedisMgr::GetInstance();
-                // Never trust arbitrary X-Forwarded-For; a proxy needs explicit trusted-peer setup.
                 if (!redis->AllowRequest("limit:gate:global", 200, 60) ||
-                    !redis->AllowRequest("limit:gate:ip:" + remote.address().to_string(), 30, 60) ||
+                    !redis->AllowRequest("limit:gate:ip:" + remote, 30, 60) ||
                     !redis->AllowRequest(std::string("limit:gate:") + path + ":" + PasswordSecurity::Digest(email), 5, 60)) {
                     response["error"] = ErrorCodes::RPCFailed;
                     response["message"] = "请求过于频繁或服务暂不可用，请稍后再试";

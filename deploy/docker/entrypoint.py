@@ -1,5 +1,6 @@
 """Container configuration; secret values are never written to the generated config."""
 import configparser
+import ipaddress
 import os
 from pathlib import Path
 import re
@@ -41,6 +42,10 @@ def main():
         raise ValueError("Containers require production security mode")
     role = os.environ["SAKURA_ROLE"]
     cfg = configuration(role, os.environ.get("SAKURA_PUBLIC_HOST", "localhost"))
+    if "SAKURA_TRUSTED_PROXY_CIDR" in os.environ:
+        network = ipaddress.ip_network(os.environ["SAKURA_TRUSTED_PROXY_CIDR"])
+        if network.version != 4 or network.prefixlen < 16 or not network.is_private:
+            raise ValueError("Trusted proxy network must be a narrow private IPv4 subnet")
     for name in ("MYSQL_PASSWORD", "REDIS_PASSWORD", "VERIFY_SERVICE_KEY", "SMTP_USER", "SMTP_PASSWORD"):
         key = "SAKURA_" + name
         path = os.environ.get(key + "_FILE")

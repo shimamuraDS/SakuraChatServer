@@ -23,6 +23,7 @@ Windows / CLion 原构建路径不变；容器不读取仓库中的开发账号�
 - 容器存活检查不等同于邮件可发送、SQL 结构完整或端到端业务正常。首次部署必须执行本文验收。
 - 不把 Docker socket 挂进第三方更新容器，不向 GitHub 开放服务器 SSH。主机上的更新器有 Docker 管理权限，脚本必须由 root 管理。
 - 公网 HTTPS 和聊天 TLS 在 Nginx 终止；内部 RPC 使用双向 TLS。数据库和 Redis 位于同机私有 overlay 网络，不发布端口。默认云端聊天仍不是端到端加密；隐私对话保持原 Signal 路径。
+- Nginx 采用 host 模式发布端口以保留客户端 IP。Gate 仅信任专用 proxy 子网里的 `X-Real-IP`，该头由 Nginx 覆盖，防止共享代理 IP 导致所有用户共用单个 IP 的限流额度。Nginx 单副本自身维护使用 stop-first，会短暂中断入口。
 
 ## 1. GitHub 设置与首次构建
 
@@ -73,6 +74,7 @@ chmod 600 /etc/sakura/deploy.env
 不能把当前测试版的“HTTPS + 明文 TCP”配置直接用于这个部署。客户端必须启用生产 TLS，网关设为 `https://chat.example.com`；状态服务将返回同一域名的 8090/8091。
 
 编辑 `/etc/sakura/deploy.env`：填写 `SAKURA_PUBLIC_HOST`、SMTP 主机及 CI Summary 给出的两个完整镜像摘要；不要保留 `REPLACE`。不要写入密码。
+`SAKURA_PROXY_SUBNET` 默认 `10.72.20.0/24`，若与服务器已有网络冲突，改为未占用的私有 IPv4 /24；这个变量同时配置 Docker 子网与 Gate 信任范围，不要扩大为全网。
 
 只对**新部署**运行一次初始化：
 
