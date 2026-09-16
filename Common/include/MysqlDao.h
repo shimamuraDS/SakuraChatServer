@@ -42,6 +42,9 @@ private:
 class MysqlDao {
 public:
     MysqlDao();
+    explicit MysqlDao(std::unique_ptr<MySqlPool> pool) : _pool(std::move(pool)) {
+        if (!_pool) throw std::invalid_argument("Missing database pool");
+    }
     ~MysqlDao();
     int RegUser(const std::string& name, const std::string& email, const std::string& pwd);
     bool CheckEmail(const std::string& name, const std::string& email);
@@ -65,6 +68,7 @@ public:
     bool ExpireMessages();
     Json::Value PrivacyCommand(int actor, const Json::Value &request);
     bool PrivacyAllows(int owner, int actor, const std::string &action);
+    Json::Value PrivateChatCommand(int actor, const Json::Value &request);
 private:
     std::unique_ptr<MySqlPool> _pool;
 };

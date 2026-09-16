@@ -7,6 +7,7 @@
 
 #include <hiredis.h>
 #include "const.h"
+#include "RateLimitResult.h"
 
 class RedisConPool {
 public:
@@ -35,6 +36,7 @@ public:
     bool SetEx(const std::string& key, const std::string& value, int seconds);
     bool ConsumeCode(const std::string& key, const std::string& code);
     bool AllowRequest(const std::string& key, int limit, int seconds);
+    RateLimitResult CheckRateLimit(const std::string& key, int limit, int seconds);
     bool DeleteIfEqual(const std::string& key, const std::string& value);
     bool Auth(const std::string& password);
     bool LPush(const std::string& key, const std::string& value);

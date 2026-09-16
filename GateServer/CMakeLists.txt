@@ -228,6 +228,7 @@ add_executable(GateServer
         src/HttpConnection.cpp
         include/HttpConnection.h
         src/LogicSystem.cpp
+        src/PrivateChatHttp.cpp
         include/LogicSystem.h
         src/VerifyGrpcClient.cpp
         include/VerifyGrpcClient.h

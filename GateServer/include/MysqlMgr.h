@@ -17,6 +17,7 @@ public:
     bool UpdatePwd(const std::string& name, const std::string& pwd);
     bool CheckPwd(const std::string& email, const std::string& pwd, UserInfo& userinfo);
     std::shared_ptr<UserInfo> GetUser(const std::string &name) { return _dao.GetUser(name); }
+    Json::Value PrivateChatCommand(int actor, const Json::Value &request) { return _dao.PrivateChatCommand(actor, request); }
 private:
     MysqlMgr();
     MysqlDao _dao;

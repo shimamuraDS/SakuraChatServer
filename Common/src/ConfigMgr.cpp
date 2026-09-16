@@ -51,6 +51,7 @@ ConfigMgr::ConfigMgr() {
         }
     };
     inject("MySQL", "User", "SAKURA_MYSQL_USER", true);
+    inject("GateServer", "Port", "SAKURA_GATE_PORT", false);
     inject("MySQL", "Password", "SAKURA_MYSQL_PASSWORD", true);
     inject("MySQL", "Host", "SAKURA_MYSQL_HOST", false);
     inject("MySQL", "Port", "SAKURA_MYSQL_PORT", false);

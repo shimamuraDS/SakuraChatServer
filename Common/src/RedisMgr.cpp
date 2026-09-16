@@ -4,6 +4,7 @@
 
 #include "RedisMgr.h"
 #include "ConfigMgr.h"
+#include <algorithm>
 
 namespace {
 // The linked hiredis version dereferences null in freeReplyObject.
@@ -183,14 +184,25 @@ bool RedisMgr::ConsumeCode(const std::string& key, const std::string& code) {
 }
 
 bool RedisMgr::AllowRequest(const std::string& key, int limit, int seconds) {
+    return CheckRateLimit(key, limit, seconds).state == RateLimitResult::State::Allowed;
+}
+
+RateLimitResult RedisMgr::CheckRateLimit(const std::string& key, int limit, int seconds) {
+    if (limit <= 0 || seconds <= 0) return {};
     auto connection = _con_pool->getConnection();
-    if (!connection) return false;
+    if (!connection) return {};
     Defer giveBack([&] { _con_pool->returnConnction(connection); });
-    const char* script = "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n";
+    const char* script = "local n=redis.call('INCR',KEYS[1]); local t=redis.call('TTL',KEYS[1]); "
+        "if t<0 then redis.call('EXPIRE',KEYS[1],ARGV[1]); t=tonumber(ARGV[1]) end; return {n,t}";
     auto reply = static_cast<redisReply*>(redisCommand(connection, "EVAL %s 1 %b %d", script, key.data(), key.size(), seconds));
-    if (!reply) return false;
-    const bool ok = reply->type == REDIS_REPLY_INTEGER && reply->integer <= limit;
-    FreeReplyIfPresent(reply); return ok;
+    if (!reply) return {};
+    RateLimitResult result;
+    if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 2 && reply->element[0] && reply->element[1]
+        && reply->element[0]->type == REDIS_REPLY_INTEGER && reply->element[1]->type == REDIS_REPLY_INTEGER) {
+        result.state = reply->element[0]->integer <= limit ? RateLimitResult::State::Allowed : RateLimitResult::State::Limited;
+        result.retryAfter = static_cast<int>(std::max<long long>(1, std::min<long long>(seconds, reply->element[1]->integer)));
+    }
+    FreeReplyIfPresent(reply); return result;
 }
 
 bool RedisMgr::DeleteIfEqual(const std::string& key, const std::string& value) {

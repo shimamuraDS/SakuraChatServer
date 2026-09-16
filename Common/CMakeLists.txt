@@ -229,11 +229,15 @@ add_library(Common STATIC
         src/StatusGrpcClient.cpp
         src/MysqlDao.cpp
         src/ChatPersistence.cpp
+        src/PrivateChatDao.cpp
         src/RedisMgr.cpp
         include/message.grpc.pb.h
         include/message.pb.h
         ${GENERATED_PROTO_FILES}
 )
+add_executable(privatechat_wire_tests EXCLUDE_FROM_ALL ../tests/privatechat_wire_tests.cpp)
+target_include_directories(privatechat_wire_tests PRIVATE include ${JSONCPP_INCLUDE_DIR})
+target_link_libraries(privatechat_wire_tests PRIVATE ${JSONCPP_LIB_DIR}/jsoncpp.lib)
 
 # ---- include 路径：Common 的头文件给所有依赖者可见 ----
 target_include_directories(Common
@@ -274,3 +278,14 @@ find_library(SODIUM_LIBRARY NAMES libsodium_static sodium_static HINTS "${SODIUM
 target_include_directories(Common PUBLIC "${SODIUM_INCLUDE_DIR}")
 target_compile_definitions(Common PUBLIC SODIUM_STATIC)
 target_link_libraries(Common PUBLIC "${SODIUM_LIBRARY}" bcrypt)
+
+add_executable(privatechat_database_tests EXCLUDE_FROM_ALL ../tests/privatechat_database_tests.cpp)
+target_sources(privatechat_database_tests PRIVATE ../GateServer/src/PrivateChatHttp.cpp ../GateServer/src/MysqlMgr.cpp)
+target_include_directories(privatechat_database_tests PRIVATE ../GateServer/include)
+target_link_libraries(privatechat_database_tests PRIVATE Common)
+target_link_directories(privatechat_database_tests PRIVATE "${MYSQLCPP_ROOT}/lib64/debug/vs14")
+target_compile_definitions(privatechat_database_tests PRIVATE PRIVATE_MIGRATION_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/006_private_chat.sql")
+add_custom_command(TARGET privatechat_database_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${MYSQLCPP_ROOT}/lib64/debug/mysqlcppconn-10-vs14.dll"
+    $<TARGET_FILE_DIR:privatechat_database_tests>)

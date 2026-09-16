@@ -5,6 +5,7 @@
 #include "RedisMgr.h"
 #include "MysqlMgr.h"
 #include "PasswordSecurity.h"
+#include "PrivateChatHttp.h"
 #include <algorithm>
 
 namespace {
@@ -16,6 +17,16 @@ bool field(const Json::Value &r, const char *name, size_t max) {
 void LogicSystem::RegGet(std::string url, HttpHandler handler) { _get_handlers.emplace(std::move(url), std::move(handler)); }
 void LogicSystem::RegPost(std::string url, HttpHandler handler) { _post_handlers.emplace(std::move(url), std::move(handler)); }
 LogicSystem::LogicSystem() {
+    RegPost("/private/v1", [](std::shared_ptr<HttpConnection> connection) {
+        boost::system::error_code ec;
+        const auto remote = connection->_socket.remote_endpoint(ec);
+        auto result = PrivateChatHttp::Handle(beast::buffers_to_string(connection->_request.body().data()),
+                                              ec ? std::string() : remote.address().to_string());
+        connection->_response.set(http::field::content_type, "application/json; charset=utf-8");
+        connection->_response.set(http::field::cache_control, "no-store");
+        Json::StreamWriterBuilder writer; writer["indentation"] = "";
+        beast::ostream(connection->_response.body()) << Json::writeString(writer, result);
+    });
     for (const auto path : {"/get_varifycode", "/user_register", "/reset_pwd", "/user_login"}) {
         RegPost(path, [path](std::shared_ptr<HttpConnection> connection) {
             Json::Value response; response["error"] = ErrorCodes::Error_Json;

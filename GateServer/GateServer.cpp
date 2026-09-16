@@ -10,13 +10,15 @@
 
 
 int main() {
-    auto & gCfgMgr = ConfigMgr::Inst();
-    std::string gate_port_str = gCfgMgr["GateServer"]["port"];
-    unsigned short gate_port = atoi(gate_port_str.c_str());
-
     try {
+        auto & gCfgMgr = ConfigMgr::Inst();
         gCfgMgr.RequireDatabaseCredentials();
-        unsigned short port = static_cast<unsigned short>(8081);
+        const auto configuredPort = gCfgMgr["GateServer"]["Port"];
+        if (configuredPort.empty() || configuredPort.find_first_not_of("0123456789") != std::string::npos)
+            throw std::runtime_error("Invalid GateServer Port");
+        const auto parsedPort = std::stoul(configuredPort);
+        if (parsedPort == 0 || parsedPort > 65535) throw std::runtime_error("Invalid GateServer Port");
+        unsigned short port = static_cast<unsigned short>(parsedPort);
         net::io_context ioc{ 1 };
         net::signal_set signals(ioc, SIGINT, SIGTERM);
         signals.async_wait([&ioc](const boost::system::error_code &error, int sigbal_number) {

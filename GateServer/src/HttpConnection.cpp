@@ -13,7 +13,7 @@ HttpConnection::HttpConnection(net::io_context& ioc): _socket(ioc) {
 // 启动HTTP连接，开始异步读取请求
 void HttpConnection::Start() {
     auto self = shared_from_this();
-    _parser.body_limit(16 * 1024);
+    _parser.body_limit(96 * 1024);
     _parser.header_limit(8 * 1024);
     _deadline.expires_after(std::chrono::seconds(15));
     CheckDeadline();
